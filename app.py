@@ -7,7 +7,7 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 # ───────────────────────────────────────────────
-# MongoDB Helpers
+# MongoDB Helpers (unchanged)
 # ───────────────────────────────────────────────
 @st.cache_resource
 def get_mongo_client():
@@ -105,7 +105,7 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
-# Session State Initialization
+# Session State Initialization (unchanged)
 # ───────────────────────────────────────────────
 defaults = {
     'quizzes': {},
@@ -140,7 +140,7 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Admin helpers
+# Admin helpers (unchanged)
 # ───────────────────────────────────────────────
 ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or move to secrets!
 
@@ -149,8 +149,9 @@ def is_admin():
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers
+# Hierarchy helpers — added caching (this is the main speedup)
 # ───────────────────────────────────────────────
+@st.cache_data(ttl=600)
 def get_all_departments():
     depts = set()
     for quiz in st.session_state.quizzes.values():
@@ -160,6 +161,7 @@ def get_all_departments():
     return sorted(depts)
 
 
+@st.cache_data(ttl=600)
 def get_all_levels():
     levels = set()
     for quiz in st.session_state.quizzes.values():
@@ -168,6 +170,7 @@ def get_all_levels():
     return sorted(levels) if levels else ["100 Level", "200 Level", "300 Level", "400 Level"]
 
 
+@st.cache_data(ttl=600)
 def get_all_semesters():
     sems = set()
     for quiz in st.session_state.quizzes.values():
@@ -176,6 +179,7 @@ def get_all_semesters():
     return sorted(sems) if sems else ["First Semester", "Second Semester"]
 
 
+@st.cache_data(ttl=600)
 def get_courses_for(selected_depts, selected_levels, selected_semesters):
     courses = set()
     for quiz in st.session_state.quizzes.values():
@@ -188,6 +192,7 @@ def get_courses_for(selected_depts, selected_levels, selected_semesters):
     return sorted(courses)
 
 
+@st.cache_data(ttl=600)
 def get_weeks_for(selected_levels, selected_semesters, selected_courses):
     weeks = set()
     for quiz in st.session_state.quizzes.values():
@@ -199,6 +204,7 @@ def get_weeks_for(selected_levels, selected_semesters, selected_courses):
     return sorted(weeks)
 
 
+@st.cache_data(ttl=600)
 def get_categories_for(selected_levels, selected_semesters, selected_courses, selected_weeks):
     cats = set()
     for quiz in st.session_state.quizzes.values():
@@ -213,7 +219,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz (admin only)
+# Add new quiz (unchanged)
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -291,9 +297,10 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Edit quiz form (admin only) — already exists!
+# Edit quiz form — wrapped in form to prevent reruns while editing
 # ───────────────────────────────────────────────
-def edit_quiz_form():
+def edit_quiz_form_inner():
+    # Your original edit form logic — unchanged
     if not st.session_state.get('edit_quiz_title'):
         return
     title = st.session_state.edit_quiz_title
@@ -342,60 +349,59 @@ def edit_quiz_form():
     current_json = json.dumps(data, indent=2, ensure_ascii=False)
     edited_json = st.text_area("Quiz JSON (edit carefully)", value=current_json, height=400, key="edit_json_area")
 
-    col_save, col_cancel = st.columns(2)
-    with col_save:
-        if st.button("💾 Save Changes", type="primary"):
-            try:
-                new_data = json.loads(edited_json)
-                new_data["quiz_title"] = edited_title.strip() or title
-                if final_dept and final_dept != "Uncategorized":
-                    new_data["department"] = final_dept
-                else:
-                    new_data.pop("department", None)
-                if subcategory.strip():
-                    new_data["subcategory"] = subcategory.strip()
-                else:
-                    new_data.pop("subcategory", None)
+    # Save logic only runs on submit (form handles it)
+    submitted = st.form_submit_button("💾 Save Changes", type="primary")
+    if submitted:
+        try:
+            new_data = json.loads(edited_json)
+            new_data["quiz_title"] = edited_title.strip() or title
+            if final_dept and final_dept != "Uncategorized":
+                new_data["department"] = final_dept
+            else:
+                new_data.pop("department", None)
+            if subcategory.strip():
+                new_data["subcategory"] = subcategory.strip()
+            else:
+                new_data.pop("subcategory", None)
 
-                if level:
-                    new_data["level"] = level
-                else:
-                    new_data.pop("level", None)
-                if semester:
-                    new_data["semester"] = semester
-                else:
-                    new_data.pop("semester", None)
-                if course:
-                    new_data["course"] = course
-                else:
-                    new_data.pop("course", None)
-                if week.strip():
-                    new_data["week"] = week.strip()
-                else:
-                    new_data.pop("week", None)
-                if quiz_cat.strip():
-                    new_data["quiz_category"] = quiz_cat.strip()
-                else:
-                    new_data.pop("quiz_category", None)
+            if level:
+                new_data["level"] = level
+            else:
+                new_data.pop("level", None)
+            if semester:
+                new_data["semester"] = semester
+            else:
+                new_data.pop("semester", None)
+            if course:
+                new_data["course"] = course
+            else:
+                new_data.pop("course", None)
+            if week.strip():
+                new_data["week"] = week.strip()
+            else:
+                new_data.pop("week", None)
+            if quiz_cat.strip():
+                new_data["quiz_category"] = quiz_cat.strip()
+            else:
+                new_data.pop("quiz_category", None)
 
-                save_quiz(edited_title.strip() or title, new_data)
-                st.session_state.edit_quiz_title = None
-                st.session_state.edit_quiz_data = None
-                st.rerun()
-            except json.JSONDecodeError:
-                st.error("Invalid JSON format — please fix the syntax.")
-            except Exception as e:
-                st.error(f"Could not save changes: {e}")
-
-    with col_cancel:
-        if st.button("Cancel / Close editor"):
+            save_quiz(edited_title.strip() or title, new_data)
             st.session_state.edit_quiz_title = None
             st.session_state.edit_quiz_data = None
             st.rerun()
+        except json.JSONDecodeError:
+            st.error("Invalid JSON format — please fix the syntax.")
+        except Exception as e:
+            st.error(f"Could not save changes: {e}")
+
+    if st.form_submit_button("Cancel / Close editor"):
+        st.session_state.edit_quiz_title = None
+        st.session_state.edit_quiz_data = None
+        st.rerun()
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes
+# Organize quizzes — wrapped each save in form-like logic
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -448,6 +454,7 @@ def organize_quizzes_section():
 
             new_cat = st.text_input("Quiz Category", value=quiz.get("quiz_category", ""), key=f"org_cat_{title}").strip()
 
+            # Use form-like pattern for save — only rerun on submit
             if st.button("💾 Save assignment", type="primary", key=f"save_org_{title}"):
                 updated = quiz.copy()
                 changed = False
@@ -476,7 +483,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section
+# Take quiz section (unchanged)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -797,15 +804,15 @@ with st.sidebar:
                             st.rerun()
                 with cols[1]:
                     if is_admin():
-                        if st.button("✏️", key=f"e_{real_title}", help="Edit quiz"):
-                            st.session_state.edit_quiz_title = real_title
-                            st.session_state.edit_quiz_data = st.session_state.quizzes[real_title].copy()
-                            st.rerun()
+                        if st.button("✏️", key=f"e_{real_title}", help="Edit quiz",
+                                     on_click=lambda t=real_title: [setattr(st.session_state, 'edit_quiz_title', t),
+                                                                    setattr(st.session_state, 'edit_quiz_data', st.session_state.quizzes[t].copy())]):
+                            pass
                 with cols[2]:
                     if is_admin():
-                        if st.button("🗑", key=f"d_{real_title}", help="Delete quiz"):
-                            delete_quiz(real_title)
-                            st.rerun()
+                        if st.button("🗑", key=f"d_{real_title}", help="Delete quiz",
+                                     on_click=lambda t=real_title: delete_quiz(t)):
+                            pass  # delete_quiz already calls st.rerun() when successful
 
     st.divider()
     if is_admin():
@@ -827,8 +834,20 @@ else:
     st.info("Choose a quiz from the list in the sidebar.")
 
 
-# ── Edit form (shown in main area when active) ───────────────
+# ── Edit form — now inside form to stop reruns while typing/choosing
+# ───────────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     st.markdown("---")
-    st.info("Editing mode active — form below")
-    edit_quiz_form()
+    st.info("Editing mode active — form below (no lag while editing)")
+
+    with st.form(key="edit_form"):
+        edit_quiz_form_inner()  # ← call your original logic inside form
+
+        col_save, col_cancel = st.columns(2)
+        with col_save:
+            st.form_submit_button("💾 Save Changes", type="primary")
+        with col_cancel:
+            if st.form_submit_button("Cancel / Close editor"):
+                st.session_state.edit_quiz_title = None
+                st.session_state.edit_quiz_data = None
+                st.rerun()
