@@ -17,8 +17,10 @@ def get_mongo_client():
     except (KeyError, AttributeError):
         st.error("""
 MongoDB connection string not found in secrets.
+
 Please go to Streamlit Cloud → your app → Secrets (or create .streamlit/secrets.toml locally)
 and add:
+
 [mongo]
 uri = "mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority"
 db_name = "NextgenDev"
@@ -48,17 +50,15 @@ def get_quizzes_collection():
     db = client[db_name]
     coll = db[coll_name]
 
-    # Ensure unique index on quiz_title
     try:
         coll.create_index("quiz_title", unique=True, background=True)
     except:
-        pass  # index probably already exists
+        pass
 
     return coll
 
 
 def load_quizzes():
-    """Load all quizzes from MongoDB into session state"""
     coll = get_quizzes_collection()
     st.session_state.quizzes.clear()
     try:
@@ -71,10 +71,9 @@ def load_quizzes():
 
 
 def save_quiz(title: str, data: dict):
-    """Upsert quiz document by quiz_title"""
     coll = get_quizzes_collection()
     data = data.copy()
-    data["quiz_title"] = title  # enforce consistency
+    data["quiz_title"] = title
     
     try:
         coll.replace_one(
@@ -83,7 +82,7 @@ def save_quiz(title: str, data: dict):
             upsert=True
         )
         st.success(f"Quiz **{title}** saved/updated.")
-        load_quizzes()  # refresh in-memory list
+        load_quizzes()
     except DuplicateKeyError:
         st.error("A quiz with this title already exists.")
     except Exception as e:
@@ -135,7 +134,6 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# Initial load
 if "quizzes_loaded" not in st.session_state:
     load_quizzes()
     st.session_state.quizzes_loaded = True
@@ -150,7 +148,7 @@ def is_admin():
     return st.session_state.get("admin_logged_in", False)
 
 # ───────────────────────────────────────────────
-# Category & Hierarchy helpers
+# Hierarchy helpers
 # ───────────────────────────────────────────────
 
 def get_all_departments():
@@ -192,18 +190,15 @@ def get_categories_for(selected_levels, selected_semesters, selected_weeks):
     cats = set()
     for quiz in st.session_state.quizzes.values():
         match = True
-        if selected_levels and quiz.get("level") not in selected_levels:
-            match = False
-        if selected_semesters and quiz.get("semester") not in selected_semesters:
-            match = False
-        if selected_weeks and quiz.get("week") not in selected_weeks:
-            match = False
+        if selected_levels and quiz.get("level") not in selected_levels: match = False
+        if selected_semesters and quiz.get("semester") not in selected_semesters: match = False
+        if selected_weeks and quiz.get("week") not in selected_weeks: match = False
         if match and (cat := quiz.get("quiz_category")):
             cats.add(cat)
     return sorted(cats)
 
 
-def get_subcategories_for_depts(selected_depts):  # kept for backward compatibility if needed
+def get_subcategories_for_depts(selected_depts):
     subs = set()
     for quiz in st.session_state.quizzes.values():
         dept = quiz.get("department") or quiz.get("category")
@@ -219,8 +214,7 @@ def get_subcategories_for_depts(selected_depts):  # kept for backward compatibil
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
     tab1, tab2 = st.tabs(["Paste JSON", "Upload file"])
-    all_depts = get_all_departments() or ["Uncategorized"]
-    all_depts = sorted(set(all_depts + ["Uncategorized"]))
+    all_depts = sorted(set(get_all_departments() | {"Uncategorized"}))
 
     with tab1:
         quiz_json = st.text_area("Quiz JSON", height=240, placeholder="Paste valid quiz JSON here...")
@@ -228,7 +222,7 @@ def submit_quiz_section():
 
         department = st.selectbox(
             "Department / Category",
-            options=all_depts + ["New department..."],
+            options=all_depts | {"New department..."},
             key="new_quiz_dept_select"
         )
         new_dept = ""
@@ -238,17 +232,16 @@ def submit_quiz_section():
 
         subcategory = st.text_input("Sub-category / Topic (optional)", key="new_quiz_subcat").strip()
 
-        # ── New hierarchy fields ───────────────────────
-        level_options = [""] + get_all_levels()
-        level = st.selectbox("Level", options=level_options, key="new_level")
+        # Hierarchy fields
+        level = st.selectbox("Level", [""] + get_all_levels() + ["Other..."], key="new_level")
         if level == "Other...":
             level = st.text_input("Custom level", key="new_custom_level").strip()
 
-        semester = st.selectbox("Semester", options=["", "First Semester", "Second Semester"], key="new_semester")
+        semester = st.selectbox("Semester", ["", "First Semester", "Second Semester"], key="new_semester")
 
-        week = st.text_input("Week (e.g. Week 3, Midterm, Revision)", key="new_week").strip()
+        week = st.text_input("Week (e.g. Week 3, Midterm)", key="new_week").strip()
 
-        quiz_category = st.text_input("Quiz Category (e.g. Quiz 1, Past Questions, Theory)", key="new_quiz_cat").strip()
+        quiz_category = st.text_input("Quiz Category (e.g. Quiz 1, Past Questions)", key="new_quiz_cat").strip()
 
         if st.button("Submit JSON", type="primary", key="submit_json"):
             if not quiz_json.strip():
@@ -261,8 +254,6 @@ def submit_quiz_section():
                     data["department"] = final_dept
                 if subcategory:
                     data["subcategory"] = subcategory
-
-                # Save new fields if provided
                 if level:
                     data["level"] = level
                 if semester:
@@ -271,7 +262,6 @@ def submit_quiz_section():
                     data["week"] = week
                 if quiz_category:
                     data["quiz_category"] = quiz_category
-
                 save_quiz(title, data)
             except json.JSONDecodeError:
                 st.error("Invalid JSON format.")
@@ -303,14 +293,13 @@ def edit_quiz_form():
 
     edited_title = st.text_input("Quiz Title", value=data.get("quiz_title", title), key="edit_title_input")
 
-    all_depts = get_all_departments() or ["Uncategorized"]
-    all_depts = sorted(set(all_depts + ["Uncategorized"]))
+    all_depts = sorted(set(get_all_departments() | {"Uncategorized"}))
     current_dept = data.get("department") or data.get("category", "Uncategorized")
     dept_index = all_depts.index(current_dept) if current_dept in all_depts else 0
 
     department = st.selectbox(
         "Department / Category",
-        options=all_depts + ["New department..."],
+        options=list(all_depts) + ["New department..."],
         index=dept_index,
         key="edit_dept_select"
     )
@@ -322,15 +311,16 @@ def edit_quiz_form():
     current_subcat = data.get("subcategory", "")
     subcategory = st.text_input("Sub-category / Topic (optional)", value=current_subcat, key="edit_subcat_input")
 
-    # ── Edit hierarchy fields ─────────────────────────
+    # Hierarchy edit fields
     current_level = data.get("level", "")
     level_options = [""] + get_all_levels()
     if current_level and current_level not in level_options:
         level_options.append(current_level)
-    level = st.selectbox("Level", options=level_options, index=level_options.index(current_level) if current_level in level_options else 0, key="edit_level")
+    level = st.selectbox("Level", level_options, index=level_options.index(current_level) if current_level in level_options else 0, key="edit_level")
 
     current_sem = data.get("semester", "")
-    semester = st.selectbox("Semester", options=["", "First Semester", "Second Semester"], index=["", "First Semester", "Second Semester"].index(current_sem) if current_sem in ["", "First Semester", "Second Semester"] else 0, key="edit_semester")
+    semester_options = ["", "First Semester", "Second Semester"]
+    semester = st.selectbox("Semester", semester_options, index=semester_options.index(current_sem) if current_sem in semester_options else 0, key="edit_semester")
 
     week = st.text_input("Week", value=data.get("week", ""), key="edit_week")
 
@@ -354,7 +344,6 @@ def edit_quiz_form():
                 else:
                     new_data.pop("subcategory", None)
 
-                # Update hierarchy fields
                 if level:
                     new_data["level"] = level
                 else:
@@ -386,6 +375,89 @@ def edit_quiz_form():
             st.session_state.edit_quiz_title = None
             st.session_state.edit_quiz_data = None
             st.rerun()
+
+# ───────────────────────────────────────────────
+# Organize / Categorize existing quizzes (new admin tool)
+# ───────────────────────────────────────────────
+
+def organize_quizzes_section():
+    st.subheader("Organize / Categorize Existing Quizzes")
+
+    if not st.session_state.quizzes:
+        st.info("No quizzes available yet.")
+        return
+
+    search_term = st.text_input("Filter by quiz title", "").strip().lower()
+
+    for title, quiz in sorted(st.session_state.quizzes.items()):
+        if search_term and search_term not in title.lower():
+            continue
+
+        with st.expander(f"📄 {title}", expanded=False):
+            st.caption("Current assignment:")
+            st.markdown(f"""
+            **Level:** {quiz.get('level', '—')}  
+            **Semester:** {quiz.get('semester', '—')}  
+            **Week:** {quiz.get('week', '—')}  
+            **Quiz Category:** {quiz.get('quiz_category', '—')}
+            """)
+
+            st.divider()
+
+            level_options = [""] + get_all_levels()
+            new_level = st.selectbox(
+                "Set Level",
+                options=level_options + ["Other..."],
+                index=level_options.index(quiz.get("level", "")) if quiz.get("level") in level_options else 0,
+                key=f"org_level_{title}"
+            )
+            if new_level == "Other...":
+                new_level = st.text_input("Custom level", key=f"org_custom_level_{title}").strip() or quiz.get("level", "")
+
+            new_semester = st.selectbox(
+                "Set Semester",
+                options=["", "First Semester", "Second Semester", "Other..."],
+                index=0 if quiz.get("semester", "") not in ["", "First Semester", "Second Semester"] else ["", "First Semester", "Second Semester"].index(quiz.get("semester", "")),
+                key=f"org_sem_{title}"
+            )
+            if new_semester == "Other...":
+                new_semester = st.text_input("Custom semester", key=f"org_custom_sem_{title}").strip() or quiz.get("semester", "")
+
+            new_week = st.text_input(
+                "Set Week",
+                value=quiz.get("week", ""),
+                key=f"org_week_{title}"
+            ).strip()
+
+            new_category = st.text_input(
+                "Set Quiz Category",
+                value=quiz.get("quiz_category", ""),
+                key=f"org_cat_{title}"
+            ).strip()
+
+            if st.button("💾 Save Assignment", type="primary", key=f"save_org_{title}"):
+                updated_data = quiz.copy()
+                changed = False
+
+                if new_level and new_level != quiz.get("level", ""):
+                    updated_data["level"] = new_level
+                    changed = True
+                if new_semester and new_semester != quiz.get("semester", ""):
+                    updated_data["semester"] = new_semester
+                    changed = True
+                if new_week and new_week != quiz.get("week", ""):
+                    updated_data["week"] = new_week
+                    changed = True
+                if new_category and new_category != quiz.get("quiz_category", ""):
+                    updated_data["quiz_category"] = new_category
+                    changed = True
+
+                if changed:
+                    save_quiz(title, updated_data)
+                    st.success("Updated!")
+                    st.rerun()
+                else:
+                    st.info("No changes detected.")
 
 # ───────────────────────────────────────────────
 # Take quiz section (unchanged)
@@ -487,7 +559,7 @@ def take_quiz_section():
                 st.session_state.user_answers[i] = opts_shuffled.index(choice)
         else:
             user_idx = st.session_state.user_answers.get(i, None)
-            correct_shuf_idx = shuffle_map.index(opts_orig.index(correct))
+            correct_shuf_idx = shuffle_map.index(opts_orig.index(correct)) if correct in opts_orig else 0
             st.radio("Your selection:", opts_shuffled,
                      index=user_idx if user_idx is not None else 0,
                      key=f"rev_{key}", disabled=True, horizontal=True)
@@ -579,11 +651,10 @@ with st.sidebar:
     st.divider()
     st.header("Find Quiz")
 
-    all_depts = get_all_departments() or ["Uncategorized"]
     selected_depts = st.multiselect(
         "Department",
-        options=sorted(all_depts),
-        default=[],
+        options=get_all_departments() or ["Uncategorized"],
+        default=st.session_state.selected_departments,
         placeholder="Select department(s)",
         key="dept_multi"
     )
@@ -593,7 +664,7 @@ with st.sidebar:
         selected_levels = st.multiselect(
             "Level",
             options=get_all_levels(),
-            default=[],
+            default=st.session_state.selected_levels,
             placeholder="Select level(s)",
             key="level_multi"
         )
@@ -603,7 +674,7 @@ with st.sidebar:
         selected_semesters = st.multiselect(
             "Semester",
             options=get_all_semesters(),
-            default=[],
+            default=st.session_state.selected_semesters,
             placeholder="Select semester(s)",
             key="sem_multi"
         )
@@ -613,7 +684,7 @@ with st.sidebar:
         selected_weeks = st.multiselect(
             "Week",
             options=get_weeks_for(selected_levels, selected_semesters),
-            default=[],
+            default=st.session_state.selected_weeks,
             placeholder="Select week(s)",
             key="week_multi"
         )
@@ -623,17 +694,18 @@ with st.sidebar:
         selected_categories = st.multiselect(
             "Quiz Category / Type",
             options=get_categories_for(selected_levels, selected_semesters, selected_weeks),
-            default=[],
+            default=st.session_state.selected_categories,
             placeholder="Select category",
             key="cat_multi"
         )
 
-    # Store selections
-    st.session_state.selected_departments = selected_depts
-    st.session_state.selected_levels = selected_levels
-    st.session_state.selected_semesters = selected_semesters
-    st.session_state.selected_weeks = selected_weeks
-    st.session_state.selected_categories = selected_categories
+    st.session_state.update({
+        'selected_departments': selected_depts,
+        'selected_levels': selected_levels,
+        'selected_semesters': selected_semesters,
+        'selected_weeks': selected_weeks,
+        'selected_categories': selected_categories
+    })
 
     st.header("Available Quizzes")
 
@@ -643,7 +715,8 @@ with st.sidebar:
         filtered = {}
         for title, quiz in st.session_state.quizzes.items():
             ok = True
-            if selected_depts and (quiz.get("department") or quiz.get("category")) not in selected_depts:
+            dept = quiz.get("department") or quiz.get("category", "Uncategorized")
+            if selected_depts and dept not in selected_depts:
                 ok = False
             if selected_levels and quiz.get("level") not in selected_levels:
                 ok = False
@@ -655,11 +728,7 @@ with st.sidebar:
                 ok = False
 
             if ok:
-                parts = []
-                if quiz.get("level"): parts.append(quiz["level"])
-                if quiz.get("semester"): parts.append(quiz["semester"])
-                if quiz.get("week"): parts.append(quiz["week"])
-                if quiz.get("quiz_category"): parts.append(quiz["quiz_category"])
+                parts = [p for p in [quiz.get("level"), quiz.get("semester"), quiz.get("week"), quiz.get("quiz_category")] if p]
                 label = title
                 if parts:
                     label += "  •  " + " → ".join(parts)
@@ -701,10 +770,15 @@ with st.sidebar:
                             st.rerun()
 
     st.divider()
+
     if is_admin():
-        submit_quiz_section()
+        with st.expander("🗂️ Organize & Categorize Quizzes", expanded=False):
+            organize_quizzes_section()
+
+        with st.expander("➕ Add New Quiz (JSON)", expanded=False):
+            submit_quiz_section()
     else:
-        st.caption("Quiz creation restricted to admin.")
+        st.caption("Quiz creation & organization restricted to admin.")
 
 # ── Main content ────────────────────────────────────────
 
@@ -714,8 +788,6 @@ elif st.session_state.selected_quiz:
     take_quiz_section()
 else:
     st.info("Choose a quiz from the list in the sidebar.")
-
-# ── Edit form (shown in main area when active) ───────────────
 
 if is_admin() and st.session_state.get('edit_quiz_title'):
     edit_quiz_form()
