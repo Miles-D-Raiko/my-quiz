@@ -291,7 +291,7 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Edit quiz form (admin only)
+# Edit quiz form (admin only) — already exists!
 # ───────────────────────────────────────────────
 def edit_quiz_form():
     if not st.session_state.get('edit_quiz_title'):
@@ -476,7 +476,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section (full version restored)
+# Take quiz section
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -565,7 +565,7 @@ def take_quiz_section():
         shuffle_map = st.session_state.option_shuffles.get(orig_idx, list(range(len(opts_orig))))
         opts_shuffled = [opts_orig[j] for j in shuffle_map]
 
-        key = f"ans_{i}_{title}"  # unique per quiz
+        key = f"ans_{i}_{title}"  # unique per quiz title
         if not st.session_state.show_answers and not st.session_state.timer_expired:
             choice = st.radio("Your answer:", opts_shuffled,
                               index=st.session_state.user_answers.get(i, None),
@@ -827,6 +827,8 @@ else:
     st.info("Choose a quiz from the list in the sidebar.")
 
 
-# ── Edit form ───────────────
+# ── Edit form (shown in main area when active) ───────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
+    st.markdown("---")
+    st.info("Editing mode active — form below")
     edit_quiz_form()
