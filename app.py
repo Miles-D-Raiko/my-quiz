@@ -289,7 +289,7 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Edit quiz form — wrapped in form (unchanged from your version)
+# Edit quiz form — wrapped in form
 # ───────────────────────────────────────────────
 def edit_quiz_form_inner():
     if not st.session_state.get('edit_quiz_title'):
@@ -340,9 +340,9 @@ def edit_quiz_form_inner():
     current_json = json.dumps(data, indent=2, ensure_ascii=False)
     edited_json = st.text_area("Quiz JSON (edit carefully)", value=current_json, height=400, key="edit_json_area")
 
-    # ── Changed only here: added unique keys ──
-    st.form_submit_button("💾 Save Changes", type="primary", key="edit_form_save_inner")
-    if st.form_submit_button("Cancel / Close editor", key="edit_form_cancel_inner"):
+    # ── Unique keys added here ──
+    st.form_submit_button("💾 Save Changes", type="primary", key="edit_save_inner")
+    if st.form_submit_button("Cancel / Close editor", key="edit_cancel_inner"):
         st.session_state.edit_quiz_title = None
         st.session_state.edit_quiz_data = None
         st.rerun()
@@ -782,7 +782,7 @@ else:
 
 
 # ── Edit form ───────────────────────────────────────────
-# Fixed: submit buttons are now correctly inside the form context
+# Fixed: unique keys for all form submit buttons
 # ─────────────────────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     st.markdown("---")
@@ -796,10 +796,10 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
         col_save, col_cancel = st.columns(2)
         
         with col_save:
-            st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True, key="edit_form_save_bottom")
+            st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True, key="edit_save_bottom")
         
         with col_cancel:
-            if st.form_submit_button("Cancel / Close editor", use_container_width=True, key="edit_form_cancel_bottom"):
+            if st.form_submit_button("Cancel / Close editor", use_container_width=True, key="edit_cancel_bottom"):
                 st.session_state.edit_quiz_title = None
                 st.session_state.edit_quiz_data = None
                 st.rerun()
