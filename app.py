@@ -784,22 +784,73 @@ else:
 # ── Edit form ───────────────────────────────────────────
 # Fixed: unique keys for all form submit buttons
 # ─────────────────────────────────────────────────────────
+# ── Edit form ───────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     st.markdown("---")
-    st.info("Editing mode active — form below (no lag while editing)")
-    
-    with st.form(key="edit_form"):
-        edit_quiz_form_inner()
-        
-        st.markdown("---")  # optional visual separation
-        
-        col_save, col_cancel = st.columns(2)
-        
-        with col_save:
-            st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True, key="edit_save_bottom")
-        
-        with col_cancel:
-            if st.form_submit_button("Cancel / Close editor", use_container_width=True, key="edit_cancel_bottom"):
-                st.session_state.edit_quiz_title = None
-                st.session_state.edit_quiz_data = None
-                st.rerun()
+    st.subheader(f"Editing Quiz: {st.session_state.edit_quiz_title}")
+    st.info("Make changes below and press Save")
+
+    with st.form(key="edit_quiz_form", clear_on_submit=False):
+        # ── Get current data (working copy) ──
+        data = st.session_state.edit_quiz_data
+
+        # All your input fields — make sure they write back immediately
+        edited_title = st.text_input(
+            "Quiz Title",
+            value=data.get("quiz_title", st.session_state.edit_quiz_title),
+            key="edit_title_input"
+        )
+
+        # ... all other fields the same way ...
+        # department, subcategory, level, semester, course, week, quiz_cat
+
+        current_json = json.dumps(data, indent=2, ensure_ascii=False)
+        edited_json = st.text_area(
+            "Full Quiz JSON (advanced edit)",
+            value=current_json,
+            height=360,
+            key="edit_json_area"
+        )
+
+        # ── Bottom buttons ──
+        col1, col2 = st.columns([3, 2])
+
+        with col1:
+            submitted = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+
+        with col2:
+            cancelled = st.form_submit_button("Cancel / Close", use_container_width=True)
+
+        # ── Handle actions AFTER the form ──
+        if submitted:
+            try:
+                # Option A: prefer structured fields (safer)
+                data["quiz_title"] = edited_title.strip()
+
+                # update other scalar fields the same way...
+                # data["department"]   = final_dept
+                # data["subcategory"]  = ...
+                # etc.
+
+                # Option B: or take everything from JSON area (more flexible but riskier)
+                # data = json.loads(edited_json)
+
+                # Save to MongoDB
+                save_quiz(data["quiz_title"], data)
+
+                # Update local cache
+                st.session_state.quizzes[data["quiz_title"]] = data.copy()
+                st.session_state.edit_quiz_data = data.copy()  # keep editing if wanted
+
+                st.success("Quiz saved successfully!")
+                # st.rerun()   ← optional — depends if you want to exit edit mode
+
+            except json.JSONDecodeError:
+                st.error("Invalid JSON in the advanced edit area.")
+            except Exception as e:
+                st.error(f"Save failed: {e}")
+
+        if cancelled:
+            st.session_state.edit_quiz_title = None
+            st.session_state.edit_quiz_data   = None
+            st.rerun()
