@@ -785,72 +785,163 @@ else:
 # Fixed: unique keys for all form submit buttons
 # ─────────────────────────────────────────────────────────
 # ── Edit form ───────────────────────────────────────────
+# ── Edit Quiz Form ──────────────────────────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
+    title = st.session_state.edit_quiz_title
+    data = st.session_state.edit_quiz_data  # working copy
+
     st.markdown("---")
-    st.subheader(f"Editing Quiz: {st.session_state.edit_quiz_title}")
-    st.info("Make changes below and press Save")
+    st.subheader(f"Editing Quiz: {title}")
+    st.caption("Make your changes below then click Save Changes")
 
     with st.form(key="edit_quiz_form", clear_on_submit=False):
-        # ── Get current data (working copy) ──
-        data = st.session_state.edit_quiz_data
-
-        # All your input fields — make sure they write back immediately
+        # ── Basic metadata fields ───────────────────────────────────────
         edited_title = st.text_input(
             "Quiz Title",
-            value=data.get("quiz_title", st.session_state.edit_quiz_title),
-            key="edit_title_input"
+            value=data.get("quiz_title", title),
+            key="edit_title"
+        ).strip()
+
+        all_depts = sorted(set(get_all_departments()) | {"Uncategorized"})
+        current_dept = data.get("department") or data.get("category", "Uncategorized")
+        dept_index = all_depts.index(current_dept) if current_dept in all_depts else 0
+
+        department = st.selectbox(
+            "Department / Category",
+            options=all_depts + ["New department..."],
+            index=dept_index,
+            key="edit_department"
         )
 
-        # ... all other fields the same way ...
-        # department, subcategory, level, semester, course, week, quiz_cat
+        new_dept = ""
+        if department == "New department...":
+            new_dept = st.text_input("New department name", key="edit_new_dept").strip()
 
+        final_dept = (new_dept or department).strip()
+
+        edited_subcategory = st.text_input(
+            "Sub-category / Topic (optional)",
+            value=data.get("subcategory", ""),
+            key="edit_subcategory"
+        ).strip()
+
+        # Level
+        level_options = [""] + get_all_levels()
+        current_level = data.get("level", "")
+        if current_level and current_level not in level_options:
+            level_options.append(current_level)
+        edited_level = st.selectbox(
+            "Level",
+            options=level_options + ["Other..."],
+            index=level_options.index(current_level) if current_level in level_options else 0,
+            key="edit_level_select"
+        )
+        if edited_level == "Other...":
+            edited_level = st.text_input("Custom level", key="edit_level_custom").strip()
+
+        # Semester
+        sem_options = ["", "First Semester", "Second Semester"]
+        current_sem = data.get("semester", "")
+        edited_semester = st.selectbox(
+            "Semester",
+            options=sem_options + ["Other..."],
+            index=sem_options.index(current_sem) if current_sem in sem_options else 0,
+            key="edit_semester_select"
+        )
+        if edited_semester == "Other...":
+            edited_semester = st.text_input("Custom semester", key="edit_semester_custom").strip()
+
+        edited_course = st.text_input(
+            "Course (e.g. CSC 101)",
+            value=data.get("course", ""),
+            key="edit_course"
+        ).strip()
+
+        edited_week = st.text_input(
+            "Week (e.g. Week 3, Midterm)",
+            value=data.get("week", ""),
+            key="edit_week"
+        ).strip()
+
+        edited_category = st.text_input(
+            "Quiz Category (e.g. Quiz 1, Past Questions)",
+            value=data.get("quiz_category", ""),
+            key="edit_category"
+        ).strip()
+
+        # ── Advanced JSON override (optional) ────────────────────────────────
+        st.markdown("---")
+        st.caption("Advanced: edit the full JSON directly (last resort)")
         current_json = json.dumps(data, indent=2, ensure_ascii=False)
         edited_json = st.text_area(
-            "Full Quiz JSON (advanced edit)",
+            "Full Quiz JSON",
             value=current_json,
-            height=360,
-            key="edit_json_area"
+            height=320,
+            key="edit_json_full"
         )
 
-        # ── Bottom buttons ──
-        col1, col2 = st.columns([3, 2])
+        # ── Action buttons ──────────────────────────────────────────────────
+        col_save, col_cancel = st.columns([3, 2])
 
-        with col1:
-            submitted = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+        with col_save:
+            save_clicked = st.form_submit_button(
+                "💾 Save Changes",
+                type="primary",
+                use_container_width=True
+            )
 
-        with col2:
-            cancelled = st.form_submit_button("Cancel / Close", use_container_width=True)
+        with col_cancel:
+            cancel_clicked = st.form_submit_button(
+                "Cancel / Close",
+                use_container_width=True
+            )
 
-        # ── Handle actions AFTER the form ──
-        if submitted:
+        # ── Form submission logic ───────────────────────────────────────────
+        if save_clicked:
             try:
-                # Option A: prefer structured fields (safer)
-                data["quiz_title"] = edited_title.strip()
+                updated_data = data.copy()
 
-                # update other scalar fields the same way...
-                # data["department"]   = final_dept
-                # data["subcategory"]  = ...
-                # etc.
+                # Update from structured fields (preferred)
+                updated_data["quiz_title"]   = edited_title or title
+                updated_data["department"]   = final_dept if final_dept and final_dept != "Uncategorized" else None
+                updated_data["subcategory"]  = edited_subcategory or None
+                updated_data["level"]        = edited_level or None
+                updated_data["semester"]     = edited_semester or None
+                updated_data["course"]       = edited_course or None
+                updated_data["week"]         = edited_week or None
+                updated_data["quiz_category"] = edited_category or None
 
-                # Option B: or take everything from JSON area (more flexible but riskier)
-                # data = json.loads(edited_json)
+                # Optional: if user edited JSON area and it looks different → override
+                if edited_json.strip() and edited_json.strip() != current_json.strip():
+                    try:
+                        json_parsed = json.loads(edited_json)
+                        # Merge — structured fields take priority over JSON
+                        updated_data.update(json_parsed)
+                        # But make sure title stays consistent
+                        updated_data["quiz_title"] = edited_title or json_parsed.get("quiz_title", title)
+                        st.info("JSON override applied (structured fields had priority)")
+                    except json.JSONDecodeError:
+                        st.error("Invalid JSON in the advanced edit area — changes from fields above were still saved.")
+                        # continue with structured changes anyway
 
-                # Save to MongoDB
-                save_quiz(data["quiz_title"], data)
+                # Save to database
+                save_quiz(updated_data["quiz_title"], updated_data)
 
-                # Update local cache
-                st.session_state.quizzes[data["quiz_title"]] = data.copy()
-                st.session_state.edit_quiz_data = data.copy()  # keep editing if wanted
+                # Update session state
+                st.session_state.quizzes[updated_data["quiz_title"]] = updated_data.copy()
+                st.session_state.edit_quiz_data = updated_data.copy()
 
-                st.success("Quiz saved successfully!")
-                # st.rerun()   ← optional — depends if you want to exit edit mode
+                st.success(f"Quiz **{updated_data['quiz_title']}** saved successfully!")
 
-            except json.JSONDecodeError:
-                st.error("Invalid JSON in the advanced edit area.")
+                # Optional: stay in edit mode or exit — your choice
+                # st.session_state.edit_quiz_title = None
+                # st.session_state.edit_quiz_data = None
+                # st.rerun()
+
             except Exception as e:
-                st.error(f"Save failed: {e}")
+                st.error(f"Save failed: {str(e)}")
 
-        if cancelled:
+        if cancel_clicked:
             st.session_state.edit_quiz_title = None
-            st.session_state.edit_quiz_data   = None
+            st.session_state.edit_quiz_data = None
             st.rerun()
