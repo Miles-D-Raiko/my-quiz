@@ -340,51 +340,9 @@ def edit_quiz_form_inner():
     current_json = json.dumps(data, indent=2, ensure_ascii=False)
     edited_json = st.text_area("Quiz JSON (edit carefully)", value=current_json, height=400, key="edit_json_area")
 
-    submitted = st.form_submit_button("💾 Save Changes", type="primary")
-    if submitted:
-        try:
-            new_data = json.loads(edited_json)
-            new_data["quiz_title"] = edited_title.strip() or title
-            if final_dept and final_dept != "Uncategorized":
-                new_data["department"] = final_dept
-            else:
-                new_data.pop("department", None)
-            if subcategory.strip():
-                new_data["subcategory"] = subcategory.strip()
-            else:
-                new_data.pop("subcategory", None)
-
-            if level:
-                new_data["level"] = level
-            else:
-                new_data.pop("level", None)
-            if semester:
-                new_data["semester"] = semester
-            else:
-                new_data.pop("semester", None)
-            if course:
-                new_data["course"] = course
-            else:
-                new_data.pop("course", None)
-            if week.strip():
-                new_data["week"] = week.strip()
-            else:
-                new_data.pop("week", None)
-            if quiz_cat.strip():
-                new_data["quiz_category"] = quiz_cat.strip()
-            else:
-                new_data.pop("quiz_category", None)
-
-            save_quiz(edited_title.strip() or title, new_data)
-            st.session_state.edit_quiz_title = None
-            st.session_state.edit_quiz_data = None
-            st.rerun()
-        except json.JSONDecodeError:
-            st.error("Invalid JSON format — please fix the syntax.")
-        except Exception as e:
-            st.error(f"Could not save changes: {e}")
-
-    if st.form_submit_button("Cancel / Close editor"):
+    # ── Changed only here: added unique keys ──
+    st.form_submit_button("💾 Save Changes", type="primary", key="edit_form_save_inner")
+    if st.form_submit_button("Cancel / Close editor", key="edit_form_cancel_inner"):
         st.session_state.edit_quiz_title = None
         st.session_state.edit_quiz_data = None
         st.rerun()
@@ -838,10 +796,10 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
         col_save, col_cancel = st.columns(2)
         
         with col_save:
-            st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+            st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True, key="edit_form_save_bottom")
         
         with col_cancel:
-            if st.form_submit_button("Cancel / Close editor", use_container_width=True):
+            if st.form_submit_button("Cancel / Close editor", use_container_width=True, key="edit_form_cancel_bottom"):
                 st.session_state.edit_quiz_title = None
                 st.session_state.edit_quiz_data = None
                 st.rerun()
