@@ -639,7 +639,7 @@ def take_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Main Layout (added minimal guards to reduce unnecessary computations)
+# Main Layout
 # ───────────────────────────────────────────────
 st.title("NextGen Dev")
 
@@ -693,23 +693,13 @@ with st.sidebar:
 
     selected_courses = []
     if selected_depts and selected_levels and selected_semesters:
-        # Optional guard — prevents recomputing if previous are empty
-        if not st.session_state.get("selected_courses"):
-            selected_courses = st.multiselect(
-                "Course",
-                options=get_courses_for(selected_depts, selected_levels, selected_semesters),
-                default=[],
-                placeholder="Select course(s)",
-                key="filter_course"
-            )
-        else:
-            selected_courses = st.multiselect(
-                "Course",
-                options=get_courses_for(selected_depts, selected_levels, selected_semesters),
-                default=st.session_state.selected_courses,
-                placeholder="Select course(s)",
-                key="filter_course"
-            )
+        selected_courses = st.multiselect(
+            "Course",
+            options=get_courses_for(selected_depts, selected_levels, selected_semesters),
+            default=[],
+            placeholder="Select course(s)",
+            key="filter_course"
+        )
 
     selected_weeks = []
     if selected_depts and selected_levels and selected_semesters and selected_courses:
@@ -833,18 +823,25 @@ else:
     st.info("Choose a quiz from the list in the sidebar.")
 
 
-# ── Edit form — already optimized with form
-# ───────────────────────────────────────────────
+# ── Edit form ───────────────────────────────────────────
+# Fixed: submit buttons are now correctly inside the form context
+# ─────────────────────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     st.markdown("---")
     st.info("Editing mode active — form below (no lag while editing)")
+    
     with st.form(key="edit_form"):
         edit_quiz_form_inner()
+        
+        st.markdown("---")  # optional visual separation
+        
         col_save, col_cancel = st.columns(2)
+        
         with col_save:
-            st.form_submit_button("💾 Save Changes", type="primary")
+            st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+        
         with col_cancel:
-            if st.form_submit_button("Cancel / Close editor"):
+            if st.form_submit_button("Cancel / Close editor", use_container_width=True):
                 st.session_state.edit_quiz_title = None
                 st.session_state.edit_quiz_data = None
                 st.rerun()
