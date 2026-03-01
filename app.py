@@ -463,7 +463,7 @@ def take_quiz_section():
     timer_placeholder = st.empty()
 
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
-        st.info("Optional: choose a time limit for this attempt")
+        st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer, and your selections will Shuffle.")
         time_options = [
             "No timer", "5 minutes", "10 minutes", "15 minutes", "20 minutes",
             "25 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes"
