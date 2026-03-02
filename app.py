@@ -429,7 +429,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – with sticky timer
+# Take quiz section – with improved sticky/floating timer
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -441,7 +441,7 @@ def take_quiz_section():
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-    # ── Sticky timer ───────────────────────────────────────────────────────
+    # ── Timer (made sticky/floating) ───────────────────────────────────────
     timer_running = False
 
     if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
@@ -455,7 +455,7 @@ def take_quiz_section():
             st.session_state.timer_expired = True
             st.session_state.show_answers = True
             
-            # Auto-calculate score when time is up
+            # Auto-calculate score on timeout
             correct_count = 0
             shuffled_questions = st.session_state.shuffled_questions or original_questions
             for i, q in enumerate(shuffled_questions):
@@ -480,28 +480,49 @@ def take_quiz_section():
             else:
                 timer_text = "⏳ No time limit"
 
-            # Anchor + timer display + CSS for sticky behavior
+            # Anchor div
             st.markdown('<div class="timer-sticky-anchor"></div>', unsafe_allow_html=True)
             
+            # Timer content
             st.markdown(
-                f'<div style="background:#0e1117; color:white; padding:10px 16px; border-radius:8px; text-align:center; font-size:1.1rem; font-weight:500; box-shadow:0 2px 8px rgba(0,0,0,0.4);">{timer_text}</div>',
+                f"""
+                <div style="
+                    background-color: #0e1117;
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    text-align: center;
+                    font-size: 1.15rem;
+                    font-weight: 600;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+                ">
+                    {timer_text}
+                </div>
+                """,
                 unsafe_allow_html=True
             )
 
+            # Strong CSS for sticky/floating behavior
             st.markdown(
                 """
                 <style>
-                    div.element-container:has(> div.timer-sticky-anchor) + div.element-container,
-                    div.element-container:has(> div.timer-sticky-anchor) {
+                    div.element-container:has(> div.timer-sticky-anchor),
+                    div.element-container:has(> div.timer-sticky-anchor) + div.element-container {
                         position: sticky !important;
                         position: -webkit-sticky !important;
                         top: 0.5rem !important;
-                        z-index: 999 !important;
+                        z-index: 9999 !important;
                         background-color: #0e1117 !important;
-                        margin: 0.5rem auto 1rem auto !important;
+                        margin: 0.5rem auto 1.2rem auto !important;
                         border-radius: 8px !important;
                         border: 1px solid #444 !important;
-                        max-width: 700px !important;
+                        max-width: 720px !important;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.5) !important;
+                    }
+                    div[data-testid="stVerticalBlock"]:has(div.timer-sticky-anchor) {
+                        position: sticky !important;
+                        top: 0.5rem !important;
+                        z-index: 9999 !important;
                     }
                 </style>
                 """,
@@ -510,7 +531,7 @@ def take_quiz_section():
 
     # ── Time limit selection ───────────────────────────────────────────────
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
-        st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer.")
+        st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer, and your selections will Shuffle.")
         time_options = [
             "No timer", "5 minutes", "10 minutes", "15 minutes", "20 minutes",
             "25 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes"
@@ -533,7 +554,7 @@ def take_quiz_section():
             st.session_state.quiz_start_time = datetime.now()
             st.rerun()
 
-    # ── Shuffle questions once ─────────────────────────────────────────────
+    # ── Shuffle questions ──────────────────────────────────────────────────
     if st.session_state.shuffled_questions is None and original_questions:
         shuffled_idx = list(range(len(original_questions)))
         random.shuffle(shuffled_idx)
@@ -639,7 +660,7 @@ def take_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Main app layout
+# Main Layout
 # ───────────────────────────────────────────────
 st.title("NextGen Dev")
 
@@ -932,6 +953,7 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
         if save_clicked:
             try:
                 updated_data = data.copy()
+
                 updated_data["quiz_title"]   = edited_title or title
                 updated_data["department"]   = final_dept if final_dept and final_dept != "Uncategorized" else None
                 updated_data["subcategory"]  = edited_subcategory or None
@@ -948,11 +970,13 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
                         updated_data["quiz_title"] = edited_title or json_parsed.get("quiz_title", title)
                         st.info("JSON override applied (structured fields had priority)")
                     except json.JSONDecodeError:
-                        st.error("Invalid JSON in advanced edit area — structured changes still saved.")
+                        st.error("Invalid JSON in the advanced edit area — changes from fields above were still saved.")
 
                 save_quiz(updated_data["quiz_title"], updated_data)
+
                 st.session_state.quizzes[updated_data["quiz_title"]] = updated_data.copy()
                 st.session_state.edit_quiz_data = updated_data.copy()
+
                 st.success(f"Quiz **{updated_data['quiz_title']}** saved successfully!")
 
             except Exception as e:
