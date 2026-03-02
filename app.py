@@ -7,7 +7,7 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 # ───────────────────────────────────────────────
-# MongoDB Helpers (unchanged)
+# MongoDB Helpers
 # ───────────────────────────────────────────────
 @st.cache_resource
 def get_mongo_client():
@@ -100,7 +100,7 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
-# Session State Initialization (unchanged)
+# Session State Initialization
 # ───────────────────────────────────────────────
 defaults = {
     'quizzes': {},
@@ -133,17 +133,17 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Admin helpers (unchanged)
+# Admin helpers
 # ───────────────────────────────────────────────
-ADMIN_PASSWORD = "quizmaster2025" # ← CHANGE THIS or move to secrets!
+ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or move to secrets!
 def is_admin():
     return st.session_state.get("admin_logged_in", False)
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers — ADDED CACHING HERE (main fix for lagging selections)
+# Hierarchy helpers
 # ───────────────────────────────────────────────
-@st.cache_data(ttl=600)  # 10 min cache — safe for static quiz data
+@st.cache_data(ttl=600)
 def get_all_departments():
     depts = set()
     for quiz in st.session_state.quizzes.values():
@@ -211,7 +211,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz (unchanged)
+# Add new quiz
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -289,7 +289,7 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Edit quiz form — wrapped in form
+# Edit quiz form
 # ───────────────────────────────────────────────
 def edit_quiz_form_inner():
     if not st.session_state.get('edit_quiz_title'):
@@ -340,7 +340,6 @@ def edit_quiz_form_inner():
     current_json = json.dumps(data, indent=2, ensure_ascii=False)
     edited_json = st.text_area("Quiz JSON (edit carefully)", value=current_json, height=400, key="edit_json_area")
 
-    # ── Unique keys added here ──
     st.form_submit_button("💾 Save Changes", type="primary", key="edit_save_inner")
     if st.form_submit_button("Cancel / Close editor", key="edit_cancel_inner"):
         st.session_state.edit_quiz_title = None
@@ -349,7 +348,7 @@ def edit_quiz_form_inner():
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes (unchanged)
+# Organize quizzes
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -430,7 +429,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section (unchanged)
+# Take quiz section – with sticky timer
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -442,31 +441,9 @@ def take_quiz_section():
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-    if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
-        st.session_state.shuffled_questions = None
-        st.session_state.option_shuffles = {}
+    # ── Sticky timer ───────────────────────────────────────────────────────
+    timer_running = False
 
-    if st.session_state.shuffled_questions is None and original_questions:
-        shuffled_idx = list(range(len(original_questions)))
-        random.shuffle(shuffled_idx)
-        st.session_state.shuffled_questions = [original_questions[i] for i in shuffled_idx]
-        st.session_state.option_shuffles = {}
-        for orig_i, q in enumerate(original_questions):
-            opts = q.get("options", [])
-            if not opts: continue
-            opt_idx = list(range(len(opts)))
-            random.shuffle(opt_idx)
-            st.session_state.option_shuffles[orig_i] = opt_idx
-
-    shuffled_questions = st.session_state.shuffled_questions or original_questions
-
-    #timer_placeholder = st.empty()
-
-
-    st.header(f"Quiz: {title}")
-    st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
-        # ── Sticky visible timer (added – stays at top when scrolling) ────────
-        # ── Improved sticky timer using :has() targeting (more reliable in Streamlit) ────────
     if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
         elapsed = datetime.now() - st.session_state.quiz_start_time
         remaining_sec = 999_999_999
@@ -474,60 +451,66 @@ def take_quiz_section():
         if st.session_state.get('time_limit_minutes'):
             remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
         
-        if remaining_sec > 0:
+        if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
+            st.session_state.timer_expired = True
+            st.session_state.show_answers = True
+            
+            # Auto-calculate score when time is up
+            correct_count = 0
+            shuffled_questions = st.session_state.shuffled_questions or original_questions
+            for i, q in enumerate(shuffled_questions):
+                orig_i = original_questions.index(q)
+                u_idx = st.session_state.user_answers.get(i)
+                if u_idx is None: continue
+                map_ = st.session_state.option_shuffles.get(orig_i, [])
+                if not map_: continue
+                orig_choice_idx = map_[u_idx]
+                if q["options"][orig_choice_idx] == q.get("correct"):
+                    correct_count += 1
+            st.session_state.score = (correct_count, len(shuffled_questions))
+            
+            st.error("⏰ Time's up! Quiz auto-submitted.")
+            st.rerun()
+        else:
+            timer_running = True
+            
             if st.session_state.get('time_limit_minutes'):
                 mins, secs = divmod(remaining_sec, 60)
-                timer_text = f"⏳ Time remaining: {mins:02d}:{secs:02d}"
+                timer_text = f"⏳ **Time remaining: {mins:02d}:{secs:02d}**"
             else:
                 timer_text = "⏳ No time limit"
-            
-            # Add a marker div + CSS that targets its parent block
-            st.markdown(
-                """
-                <div class="timer-marker"></div>
-                """,
-                unsafe_allow_html=True
-            )
+
+            # Anchor + timer display + CSS for sticky behavior
+            st.markdown('<div class="timer-sticky-anchor"></div>', unsafe_allow_html=True)
             
             st.markdown(
-                f"""
-                <div style="
-                    background-color: #0e1117;
-                    color: #fafafa;
-                    padding: 10px 16px;
-                    border-radius: 8px;
-                    text-align: center;
-                    font-weight: 500;
-                    font-size: 1.1rem;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-                ">
-                    {timer_text}
-                </div>
-                """,
+                f'<div style="background:#0e1117; color:white; padding:10px 16px; border-radius:8px; text-align:center; font-size:1.1rem; font-weight:500; box-shadow:0 2px 8px rgba(0,0,0,0.4);">{timer_text}</div>',
                 unsafe_allow_html=True
             )
-            
-            # The key CSS – makes the PARENT vertical block sticky when it contains our marker
+
             st.markdown(
                 """
                 <style>
-                    div[data-testid="stVerticalBlock"] div:has(div.timer-marker) {
-                        position: sticky;
-                        top: 0.5rem;
-                        z-index: 999;
-                        background-color: #0e1117;  /* match background to avoid transparency issues */
-                        margin-bottom: 1rem;
-                        border-radius: 8px;
-                        border: 1px solid #444;
+                    div.element-container:has(> div.timer-sticky-anchor) + div.element-container,
+                    div.element-container:has(> div.timer-sticky-anchor) {
+                        position: sticky !important;
+                        position: -webkit-sticky !important;
+                        top: 0.5rem !important;
+                        z-index: 999 !important;
+                        background-color: #0e1117 !important;
+                        margin: 0.5rem auto 1rem auto !important;
+                        border-radius: 8px !important;
+                        border: 1px solid #444 !important;
+                        max-width: 700px !important;
                     }
                 </style>
                 """,
                 unsafe_allow_html=True
             )
-            
 
+    # ── Time limit selection ───────────────────────────────────────────────
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
-        st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer, and your selections will Shuffle.")
+        st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer.")
         time_options = [
             "No timer", "5 minutes", "10 minutes", "15 minutes", "20 minutes",
             "25 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes"
@@ -543,49 +526,29 @@ def take_quiz_section():
                 try:
                     minutes = int(selected_time.split()[0])
                     st.session_state.time_limit_minutes = minutes
-                    st.session_state.quiz_start_time = datetime.now()
                 except:
                     st.session_state.time_limit_minutes = None
-                    st.session_state.quiz_start_time = datetime.now()
             else:
                 st.session_state.time_limit_minutes = None
-                st.session_state.quiz_start_time = datetime.now()
+            st.session_state.quiz_start_time = datetime.now()
             st.rerun()
 
-            timer_running = False
-    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
-        elapsed = datetime.now() - st.session_state.quiz_start_time
-        remaining_sec = 999_999_999
-        if st.session_state.get('time_limit_minutes'):
-            remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
-        
-        if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
-            st.session_state.timer_expired = True
-            st.session_state.show_answers = True
-            
-            # Calculate score when time runs out (this was missing before)
-            correct_count = 0
-            for i, q in enumerate(shuffled_questions):
-                orig_i = original_questions.index(q)
-                u_idx = st.session_state.user_answers.get(i)
-                if u_idx is None:
-                    continue
-                map_ = st.session_state.option_shuffles.get(orig_i, list(range(len(q.get("options", [])))))
-                if not map_:
-                    continue
-                orig_choice_idx = map_[u_idx]
-                if q["options"][orig_choice_idx] == q.get("correct"):
-                    correct_count += 1
-            
-            st.session_state.score = (correct_count, len(shuffled_questions))
-            
-            st.error("⏰ Time's up! Quiz auto-submitted.")
-            st.rerun()
-        else:
-            timer_running = True
-            # Timer display is now handled by the sticky markdown higher up
+    # ── Shuffle questions once ─────────────────────────────────────────────
+    if st.session_state.shuffled_questions is None and original_questions:
+        shuffled_idx = list(range(len(original_questions)))
+        random.shuffle(shuffled_idx)
+        st.session_state.shuffled_questions = [original_questions[i] for i in shuffled_idx]
+        st.session_state.option_shuffles = {}
+        for orig_i, q in enumerate(original_questions):
+            opts = q.get("options", [])
+            if not opts: continue
+            opt_idx = list(range(len(opts)))
+            random.shuffle(opt_idx)
+            st.session_state.option_shuffles[orig_i] = opt_idx
 
+    shuffled_questions = st.session_state.shuffled_questions or original_questions
 
+    # ── Questions ──────────────────────────────────────────────────────────
     for i, q in enumerate(shuffled_questions):
         st.subheader(f"Q{i+1}. {q.get('question', '—')}")
         orig_idx = original_questions.index(q)
@@ -598,7 +561,7 @@ def take_quiz_section():
         shuffle_map = st.session_state.option_shuffles.get(orig_idx, list(range(len(opts_orig))))
         opts_shuffled = [opts_orig[j] for j in shuffle_map]
 
-        key = f"ans_{i}_{title}"  # unique per quiz title
+        key = f"ans_{i}_{title}"
         if not st.session_state.show_answers and not st.session_state.timer_expired:
             choice = st.radio("Your answer:", opts_shuffled,
                               index=st.session_state.user_answers.get(i, None),
@@ -676,7 +639,7 @@ def take_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Main Layout
+# Main app layout
 # ───────────────────────────────────────────────
 st.title("NextGen Dev")
 
@@ -861,20 +824,15 @@ else:
 
 
 # ── Edit form ───────────────────────────────────────────
-# Fixed: unique keys for all form submit buttons
-# ─────────────────────────────────────────────────────────
-# ── Edit form ───────────────────────────────────────────
-# ── Edit Quiz Form ──────────────────────────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     title = st.session_state.edit_quiz_title
-    data = st.session_state.edit_quiz_data  # working copy
+    data = st.session_state.edit_quiz_data
 
     st.markdown("---")
     st.subheader(f"Editing Quiz: {title}")
     st.caption("Make your changes below then click Save Changes")
 
     with st.form(key="edit_quiz_form", clear_on_submit=False):
-        # ── Basic metadata fields ───────────────────────────────────────
         edited_title = st.text_input(
             "Quiz Title",
             value=data.get("quiz_title", title),
@@ -904,7 +862,6 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
             key="edit_subcategory"
         ).strip()
 
-        # Level
         level_options = [""] + get_all_levels()
         current_level = data.get("level", "")
         if current_level and current_level not in level_options:
@@ -918,7 +875,6 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
         if edited_level == "Other...":
             edited_level = st.text_input("Custom level", key="edit_level_custom").strip()
 
-        # Semester
         sem_options = ["", "First Semester", "Second Semester"]
         current_sem = data.get("semester", "")
         edited_semester = st.selectbox(
@@ -948,7 +904,6 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
             key="edit_category"
         ).strip()
 
-        # ── Advanced JSON override (optional) ────────────────────────────────
         st.markdown("---")
         st.caption("Advanced: edit the full JSON directly (last resort)")
         current_json = json.dumps(data, indent=2, ensure_ascii=False)
@@ -959,7 +914,6 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
             key="edit_json_full"
         )
 
-        # ── Action buttons ──────────────────────────────────────────────────
         col_save, col_cancel = st.columns([3, 2])
 
         with col_save:
@@ -975,12 +929,9 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
                 use_container_width=True
             )
 
-        # ── Form submission logic ───────────────────────────────────────────
         if save_clicked:
             try:
                 updated_data = data.copy()
-
-                # Update from structured fields (preferred)
                 updated_data["quiz_title"]   = edited_title or title
                 updated_data["department"]   = final_dept if final_dept and final_dept != "Uncategorized" else None
                 updated_data["subcategory"]  = edited_subcategory or None
@@ -990,32 +941,19 @@ if is_admin() and st.session_state.get('edit_quiz_title'):
                 updated_data["week"]         = edited_week or None
                 updated_data["quiz_category"] = edited_category or None
 
-                # Optional: if user edited JSON area and it looks different → override
                 if edited_json.strip() and edited_json.strip() != current_json.strip():
                     try:
                         json_parsed = json.loads(edited_json)
-                        # Merge — structured fields take priority over JSON
                         updated_data.update(json_parsed)
-                        # But make sure title stays consistent
                         updated_data["quiz_title"] = edited_title or json_parsed.get("quiz_title", title)
                         st.info("JSON override applied (structured fields had priority)")
                     except json.JSONDecodeError:
-                        st.error("Invalid JSON in the advanced edit area — changes from fields above were still saved.")
-                        # continue with structured changes anyway
+                        st.error("Invalid JSON in advanced edit area — structured changes still saved.")
 
-                # Save to database
                 save_quiz(updated_data["quiz_title"], updated_data)
-
-                # Update session state
                 st.session_state.quizzes[updated_data["quiz_title"]] = updated_data.copy()
                 st.session_state.edit_quiz_data = updated_data.copy()
-
                 st.success(f"Quiz **{updated_data['quiz_title']}** saved successfully!")
-
-                # Optional: stay in edit mode or exit — your choice
-                # st.session_state.edit_quiz_title = None
-                # st.session_state.edit_quiz_data = None
-                # st.rerun()
 
             except Exception as e:
                 st.error(f"Save failed: {str(e)}")
