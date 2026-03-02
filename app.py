@@ -133,6 +133,33 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
+# Timer helper (added - minimal change)
+# ───────────────────────────────────────────────
+def get_timer_text():
+    if st.session_state.quiz_start_time is None:
+        return "Not started"
+    
+    elapsed = (datetime.now() - st.session_state.quiz_start_time).total_seconds()
+    
+    if st.session_state.time_limit_minutes:
+        remaining = st.session_state.time_limit_minutes * 60 - elapsed
+        if remaining <= 0:
+            st.session_state.timer_expired = True
+            return "Time's up!"
+        mins = int(remaining // 60)
+        secs = int(remaining % 60)
+        return f"{mins:02d}:{secs:02d} remaining"
+    else:
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        return f"{mins:02d}:{secs:02d} elapsed"
+
+
+# Compute timer text on every page run
+timer_text = get_timer_text()
+
+
+# ───────────────────────────────────────────────
 # Admin helpers (unchanged)
 # ───────────────────────────────────────────────
 ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or move to secrets!
@@ -572,20 +599,39 @@ def take_quiz_section():
 
     # ── Right fixed pane (timer + status) ──────────────────────────────────
     with right_col:
-        # Sticky/fixed styling for the right pane
+        # Improved sticky/fixed styling for the right pane
         st.markdown(
             """
             <style>
                 .fixed-right-pane {
                     position: sticky;
-                    top: 1rem;
+                    top: 4rem;                  /* ← changed: better position below header */
                     background: #0e1117;
                     border-radius: 12px;
-                    border: 1px solid #444;
-                    padding: 1.2rem;
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-                    z-index: 10;
+                    border: 1px solid #4a5568;
+                    padding: 1.4rem 1.2rem;
+                    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.6);
+                    z-index: 999;
                     margin-left: 1rem;
+                    min-height: 140px;
+                }
+                .fixed-right-pane h3 {
+                    margin-top: 0;
+                    color: #a5b4fc;
+                }
+                .timer-display {
+                    font-size: 1.7rem;
+                    font-weight: bold;
+                    color: #facc15;
+                    margin: 1rem 0;
+                    text-align: center;
+                }
+                @media (max-width: 991px) {
+                    .fixed-right-pane {
+                        position: static;
+                        margin: 1.5rem auto;
+                        width: 90%;
+                    }
                 }
             </style>
             """,
@@ -596,8 +642,7 @@ def take_quiz_section():
 
         st.markdown("### Quiz Status")
 
-        # Timer display
-        st.markdown(f"**Timer:** {timer_text}")
+        st.markdown(f'<div class="timer-display">⏱️ {timer_text}</div>', unsafe_allow_html=True)
 
         # Optional extra info
         if st.session_state.shuffled_questions:
