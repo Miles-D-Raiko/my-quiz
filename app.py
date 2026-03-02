@@ -7,7 +7,7 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 # ───────────────────────────────────────────────
-# MongoDB Helpers
+# MongoDB Helpers (unchanged)
 # ───────────────────────────────────────────────
 @st.cache_resource
 def get_mongo_client():
@@ -100,7 +100,7 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
-# Session State Initialization
+# Session State Initialization (unchanged)
 # ───────────────────────────────────────────────
 defaults = {
     'quizzes': {},
@@ -133,15 +133,15 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Admin helpers
+# Admin helpers (unchanged)
 # ───────────────────────────────────────────────
-ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or move to secrets!
+ADMIN_PASSWORD = "quizmaster2025" # ← CHANGE THIS or move to secrets!
 def is_admin():
     return st.session_state.get("admin_logged_in", False)
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers
+# Hierarchy helpers — ADDED CACHING HERE (unchanged)
 # ───────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def get_all_departments():
@@ -211,7 +211,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz
+# Add new quiz (unchanged)
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -348,7 +348,7 @@ def edit_quiz_form_inner():
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes
+# Organize quizzes (unchanged)
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -429,7 +429,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – with sticky timer
+# Take quiz section – FIXED timer stays visible on scroll
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -441,9 +441,10 @@ def take_quiz_section():
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-    # ── Timer logic + sticky display ───────────────────────────────────────
+    # Always define timer_running first – prevents UnboundLocalError
     timer_running = False
 
+    # ── Timer logic + sticky display (runs only when quiz is active) ───────
     if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
         elapsed = datetime.now() - st.session_state.quiz_start_time
         remaining_sec = 999_999_999
@@ -455,21 +456,18 @@ def take_quiz_section():
             st.session_state.timer_expired = True
             st.session_state.show_answers = True
             
-            # Auto-calculate score when time expires
+            # Auto-calculate score
             correct_count = 0
             shuffled_questions = st.session_state.shuffled_questions or original_questions
             for i, q in enumerate(shuffled_questions):
                 orig_i = original_questions.index(q)
                 u_idx = st.session_state.user_answers.get(i)
-                if u_idx is None:
-                    continue
+                if u_idx is None: continue
                 map_ = st.session_state.option_shuffles.get(orig_i, [])
-                if not map_:
-                    continue
+                if not map_: continue
                 orig_choice_idx = map_[u_idx]
                 if q["options"][orig_choice_idx] == q.get("correct"):
                     correct_count += 1
-            
             st.session_state.score = (correct_count, len(shuffled_questions))
             
             st.error("⏰ Time's up! Quiz auto-submitted.")
@@ -483,12 +481,12 @@ def take_quiz_section():
             else:
                 timer_text = "⏳ No time limit"
 
-            # Anchor + timer content + sticky CSS
-            st.markdown('<div class="timer-anchor"></div>', unsafe_allow_html=True)
-            
+            # Sticky timer – stays visible when scrolling
             st.markdown(
                 f"""
                 <div style="
+                    position: sticky;
+                    top: 0.5rem;
                     background-color: #0e1117;
                     color: white;
                     padding: 10px 20px;
@@ -496,6 +494,10 @@ def take_quiz_section():
                     text-align: center;
                     font-size: 1.15rem;
                     font-weight: 600;
+                    z-index: 999;
+                    margin: 0 auto 1rem auto;
+                    max-width: 700px;
+                    border: 1px solid #444;
                     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
                 ">
                     {timer_text}
@@ -504,30 +506,7 @@ def take_quiz_section():
                 unsafe_allow_html=True
             )
 
-            st.markdown(
-                """
-                <style>
-                    div.element-container:has(> div.timer-anchor) {
-                        position: sticky !important;
-                        top: 0.5rem !important;
-                        z-index: 999 !important;
-                        background-color: #0e1117 !important;
-                        margin: 0.5rem auto 1rem auto !important;
-                        border-radius: 8px !important;
-                        border: 1px solid #444 !important;
-                        max-width: 720px !important;
-                    }
-                    div[data-testid="stVerticalBlock"]:has(div.timer-anchor) {
-                        position: sticky !important;
-                        top: 0.5rem !important;
-                        z-index: 999 !important;
-                    }
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
-
-    # ── Start quiz selection ───────────────────────────────────────────────
+    # ── Time limit selection ───────────────────────────────────────────────
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
         st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer, and your selections will Shuffle.")
         time_options = [
@@ -652,13 +631,14 @@ def take_quiz_section():
                         st.session_state[k] = None
             st.rerun()
 
+    # Timer refresh only when active
     if timer_running:
         time.sleep(1)
         st.rerun()
 
 
 # ───────────────────────────────────────────────
-# Main Layout
+# Main Layout (unchanged)
 # ───────────────────────────────────────────────
 st.title("NextGen Dev")
 
@@ -845,7 +825,7 @@ else:
 # ── Edit form ───────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     title = st.session_state.edit_quiz_title
-    data = st.session_state.edit_quiz_data
+    data = st.session_state.edit_quiz_data  # working copy
 
     st.markdown("---")
     st.subheader(f"Editing Quiz: {title}")
