@@ -7,7 +7,7 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 # ───────────────────────────────────────────────
-# MongoDB Helpers
+# MongoDB Helpers (unchanged)
 # ───────────────────────────────────────────────
 @st.cache_resource
 def get_mongo_client():
@@ -100,7 +100,7 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
-# Session State Initialization
+# Session State Initialization (unchanged)
 # ───────────────────────────────────────────────
 defaults = {
     'quizzes': {},
@@ -133,7 +133,7 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Admin helpers
+# Admin helpers (unchanged)
 # ───────────────────────────────────────────────
 ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or move to secrets!
 def is_admin():
@@ -141,7 +141,7 @@ def is_admin():
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers
+# Hierarchy helpers (unchanged)
 # ───────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def get_all_departments():
@@ -211,7 +211,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz
+# Add new quiz (unchanged)
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -289,7 +289,7 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Edit quiz form
+# Edit quiz form (unchanged)
 # ───────────────────────────────────────────────
 def edit_quiz_form_inner():
     if not st.session_state.get('edit_quiz_title'):
@@ -348,7 +348,7 @@ def edit_quiz_form_inner():
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes
+# Organize quizzes (unchanged)
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -429,7 +429,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – timer fixed pane at top (content scrolls behind)
+# Take quiz section – with right fixed pane for timer & status
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -438,198 +438,178 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
-    # ── Fixed timer pane (always visible at top of screen) ─────────────────
-    timer_running = False
+    # ── Layout: left = questions, right = fixed pane ───────────────────────
+    left_col, right_col = st.columns([7, 3])
 
-    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
-        elapsed = datetime.now() - st.session_state.quiz_start_time
-        remaining_sec = 999_999_999
-        
-        if st.session_state.get('time_limit_minutes'):
-            remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
-        
-        if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
-            st.session_state.timer_expired = True
-            st.session_state.show_answers = True
-            
-            correct_count = 0
-            shuffled_questions = st.session_state.shuffled_questions or original_questions
-            for i, q in enumerate(shuffled_questions):
-                orig_i = original_questions.index(q)
-                u_idx = st.session_state.user_answers.get(i)
-                if u_idx is None: continue
-                map_ = st.session_state.option_shuffles.get(orig_i, [])
-                if not map_: continue
-                orig_choice_idx = map_[u_idx]
-                if q["options"][orig_choice_idx] == q.get("correct"):
-                    correct_count += 1
-            st.session_state.score = (correct_count, len(shuffled_questions))
-            
-            st.error("⏰ Time's up! Quiz auto-submitted.")
-            st.rerun()
-        else:
-            timer_running = True
-            
-            if st.session_state.get('time_limit_minutes'):
-                mins, secs = divmod(remaining_sec, 60)
-                timer_text = f"⏳ Time remaining: {mins:02d}:{secs:02d}"
-            else:
-                timer_text = "⏳ No time limit"
+    with left_col:
+        st.header(f"Quiz: {title}")
+        st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-            # Fixed pane at the top – full width, content scrolls behind
-            st.markdown(
-                f"""
-                <div style="
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    background: #0e1117;
-                    color: white;
-                    padding: 12px 20px;
-                    text-align: center;
-                    font-size: 1.2rem;
-                    font-weight: 600;
-                    z-index: 9999;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-                    border-bottom: 1px solid #444;
-                ">
-                    {timer_text}
-                </div>
-                <div style="height: 68px;"></div>  <!-- Spacer: prevents content from being hidden under fixed bar -->
-                """,
-                unsafe_allow_html=True
+        # Time selection (before start)
+        if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
+            st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer.")
+            time_options = [
+                "No timer", "5 minutes", "10 minutes", "15 minutes", "20 minutes",
+                "25 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes"
+            ]
+            selected_time = st.selectbox(
+                "Time limit",
+                options=time_options,
+                index=0,
+                key="time_limit_select_unique"
             )
-
-    # ── Main quiz content (scrolls normally underneath the timer) ──────────
-    st.header(f"Quiz: {title}")
-    st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
-
-    if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
-        st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer, and your selections will Shuffle.")
-        time_options = [
-            "No timer", "5 minutes", "10 minutes", "15 minutes", "20 minutes",
-            "25 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes"
-        ]
-        selected_time = st.selectbox(
-            "Time limit",
-            options=time_options,
-            index=0,
-            key="time_limit_select_unique"
-        )
-        if st.button("Start Quiz", type="primary"):
-            if selected_time != "No timer":
-                try:
-                    minutes = int(selected_time.split()[0])
-                    st.session_state.time_limit_minutes = minutes
-                except:
-                    st.session_state.time_limit_minutes = None
-            else:
-                st.session_state.time_limit_minutes = None
-            st.session_state.quiz_start_time = datetime.now()
-            st.rerun()
-
-    if st.session_state.shuffled_questions is None and original_questions:
-        shuffled_idx = list(range(len(original_questions)))
-        random.shuffle(shuffled_idx)
-        st.session_state.shuffled_questions = [original_questions[i] for i in shuffled_idx]
-        st.session_state.option_shuffles = {}
-        for orig_i, q in enumerate(original_questions):
-            opts = q.get("options", [])
-            if not opts: continue
-            opt_idx = list(range(len(opts)))
-            random.shuffle(opt_idx)
-            st.session_state.option_shuffles[orig_i] = opt_idx
-
-    shuffled_questions = st.session_state.shuffled_questions or original_questions
-
-    for i, q in enumerate(shuffled_questions):
-        st.subheader(f"Q{i+1}. {q.get('question', '—')}")
-        orig_idx = original_questions.index(q)
-        opts_orig = q.get("options", [])
-        correct = q.get("correct")
-        if not opts_orig or correct not in opts_orig:
-            st.error(f"Q{i+1}: Invalid question data")
-            continue
-
-        shuffle_map = st.session_state.option_shuffles.get(orig_idx, list(range(len(opts_orig))))
-        opts_shuffled = [opts_orig[j] for j in shuffle_map]
-
-        key = f"ans_{i}_{title}"
-        if not st.session_state.show_answers and not st.session_state.timer_expired:
-            choice = st.radio("Your answer:", opts_shuffled,
-                              index=st.session_state.user_answers.get(i, None),
-                              key=key, horizontal=False)
-            if choice is not None:
-                st.session_state.user_answers[i] = opts_shuffled.index(choice)
-        else:
-            user_idx = st.session_state.user_answers.get(i, None)
-            correct_shuf_idx = shuffle_map.index(opts_orig.index(correct))
-            st.radio("Your selection:", opts_shuffled,
-                     index=user_idx if user_idx is not None else 0,
-                     key=f"rev_{key}", disabled=True, horizontal=True)
-            if st.session_state.reveal_correct_answers:
-                if user_idx is None:
-                    st.warning("Skipped")
-                    st.markdown(f"**Correct:** {correct}")
-                elif user_idx == correct_shuf_idx:
-                    st.success("Correct ✓")
+            if st.button("Start Quiz", type="primary"):
+                if selected_time != "No timer":
+                    try:
+                        minutes = int(selected_time.split()[0])
+                        st.session_state.time_limit_minutes = minutes
+                    except:
+                        st.session_state.time_limit_minutes = None
                 else:
-                    st.error("Incorrect ✗")
-                    st.markdown(f"**Correct:** {correct}")
-                if expl := q.get("explanation", ""):
-                    with st.expander("Explanation"):
-                        st.write(expl)
-        st.markdown("---")
+                    st.session_state.time_limit_minutes = None
+                st.session_state.quiz_start_time = datetime.now()
+                st.rerun()
 
-    quiz_ended = st.session_state.show_answers or st.session_state.timer_expired
+        # Shuffle questions once
+        if st.session_state.shuffled_questions is None and original_questions:
+            shuffled_idx = list(range(len(original_questions)))
+            random.shuffle(shuffled_idx)
+            st.session_state.shuffled_questions = [original_questions[i] for i in shuffled_idx]
+            st.session_state.option_shuffles = {}
+            for orig_i, q in enumerate(original_questions):
+                opts = q.get("options", [])
+                if not opts: continue
+                opt_idx = list(range(len(opts)))
+                random.shuffle(opt_idx)
+                st.session_state.option_shuffles[orig_i] = opt_idx
 
-    if not quiz_ended:
-        if st.button("Submit Quiz", type="primary"):
-            correct_count = 0
-            for i, q in enumerate(shuffled_questions):
-                orig_i = original_questions.index(q)
-                u_idx = st.session_state.user_answers.get(i)
-                if u_idx is None: continue
-                map_ = st.session_state.option_shuffles.get(orig_i, [])
-                orig_choice_idx = map_[u_idx]
-                if q["options"][orig_choice_idx] == q["correct"]:
-                    correct_count += 1
-            st.session_state.score = (correct_count, len(shuffled_questions))
-            st.session_state.show_answers = True
-            st.rerun()
+        shuffled_questions = st.session_state.shuffled_questions or original_questions
 
-    else:
+        # Questions loop
+        for i, q in enumerate(shuffled_questions):
+            st.subheader(f"Q{i+1}. {q.get('question', '—')}")
+            orig_idx = original_questions.index(q)
+            opts_orig = q.get("options", [])
+            correct = q.get("correct")
+            if not opts_orig or correct not in opts_orig:
+                st.error(f"Q{i+1}: Invalid question data")
+                continue
+
+            shuffle_map = st.session_state.option_shuffles.get(orig_idx, list(range(len(opts_orig))))
+            opts_shuffled = [opts_orig[j] for j in shuffle_map]
+
+            key = f"ans_{i}_{title}"
+            if not st.session_state.show_answers and not st.session_state.timer_expired:
+                choice = st.radio("Your answer:", opts_shuffled,
+                                  index=st.session_state.user_answers.get(i, None),
+                                  key=key, horizontal=False)
+                if choice is not None:
+                    st.session_state.user_answers[i] = opts_shuffled.index(choice)
+            else:
+                user_idx = st.session_state.user_answers.get(i, None)
+                correct_shuf_idx = shuffle_map.index(opts_orig.index(correct))
+                st.radio("Your selection:", opts_shuffled,
+                         index=user_idx if user_idx is not None else 0,
+                         key=f"rev_{key}", disabled=True, horizontal=True)
+                if st.session_state.reveal_correct_answers:
+                    if user_idx is None:
+                        st.warning("Skipped")
+                        st.markdown(f"**Correct:** {correct}")
+                    elif user_idx == correct_shuf_idx:
+                        st.success("Correct ✓")
+                    else:
+                        st.error("Incorrect ✗")
+                        st.markdown(f"**Correct:** {correct}")
+                    if expl := q.get("explanation", ""):
+                        with st.expander("Explanation"):
+                            st.write(expl)
+            st.markdown("---")
+
+        quiz_ended = st.session_state.show_answers or st.session_state.timer_expired
+
+        if not quiz_ended:
+            if st.button("Submit Quiz", type="primary"):
+                correct_count = 0
+                for i, q in enumerate(shuffled_questions):
+                    orig_i = original_questions.index(q)
+                    u_idx = st.session_state.user_answers.get(i)
+                    if u_idx is None: continue
+                    map_ = st.session_state.option_shuffles.get(orig_i, [])
+                    orig_choice_idx = map_[u_idx]
+                    if q["options"][orig_choice_idx] == q["correct"]:
+                        correct_count += 1
+                st.session_state.score = (correct_count, len(shuffled_questions))
+                st.session_state.show_answers = True
+                st.rerun()
+
+        else:
+            if st.session_state.score:
+                c, t = st.session_state.score
+                pct = c / t * 100 if t > 0 else 0
+                st.success(f"**Score: {c}/{t}** ({pct:.0f}%)")
+
+            if not st.session_state.reveal_correct_answers:
+                if st.button("Show correct answers & explanations"):
+                    st.session_state.reveal_correct_answers = True
+                    st.rerun()
+            else:
+                if st.button("Hide correct answers"):
+                    st.session_state.reveal_correct_answers = False
+                    st.rerun()
+
+        if quiz_ended:
+            if st.button("Restart this quiz"):
+                for k in ['user_answers','show_answers','score','quiz_start_time',
+                          'time_limit_minutes','timer_expired','reveal_correct_answers',
+                          'shuffled_questions','option_shuffles']:
+                    if k in st.session_state:
+                        v = st.session_state[k]
+                        if isinstance(v, dict):
+                            v.clear()
+                        else:
+                            st.session_state[k] = None
+                st.rerun()
+
+    # ── Right fixed pane (timer + status) ──────────────────────────────────
+    with right_col:
+        # Sticky/fixed styling for the right pane
+        st.markdown(
+            """
+            <style>
+                .fixed-right-pane {
+                    position: sticky;
+                    top: 1rem;
+                    background: #0e1117;
+                    border-radius: 12px;
+                    border: 1px solid #444;
+                    padding: 1.2rem;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+                    z-index: 10;
+                    margin-left: 1rem;
+                }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown('<div class="fixed-right-pane">', unsafe_allow_html=True)
+
+        st.markdown("### Quiz Status")
+
+        # Timer display
+        st.markdown(f"**Timer:** {timer_text}")
+
+        # Optional extra info
+        if st.session_state.shuffled_questions:
+            current_q = len(st.session_state.user_answers)
+            total_q = len(st.session_state.shuffled_questions)
+            st.markdown(f"**Progress:** {current_q}/{total_q} answered")
+
         if st.session_state.score:
             c, t = st.session_state.score
-            pct = c / t * 100 if t > 0 else 0
-            st.success(f"**Score: {c}/{t}** ({pct:.0f}%)")
+            st.markdown(f"**Score:** {c}/{t}")
 
-        if not st.session_state.reveal_correct_answers:
-            if st.button("Show correct answers & explanations"):
-                st.session_state.reveal_correct_answers = True
-                st.rerun()
-        else:
-            if st.button("Hide correct answers"):
-                st.session_state.reveal_correct_answers = False
-                st.rerun()
-
-    if quiz_ended:
-        if st.button("Restart this quiz"):
-            for k in ['user_answers','show_answers','score','quiz_start_time',
-                      'time_limit_minutes','timer_expired','reveal_correct_answers',
-                      'shuffled_questions','option_shuffles']:
-                if k in st.session_state:
-                    v = st.session_state[k]
-                    if isinstance(v, dict):
-                        v.clear()
-                    else:
-                        st.session_state[k] = None
-            st.rerun()
-
-    if timer_running:
-        time.sleep(1)
-        st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ───────────────────────────────────────────────
