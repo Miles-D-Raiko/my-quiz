@@ -429,7 +429,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – timer pinned at top (fixed pane, content scrolls behind)
+# Take quiz section – timer fixed pane at top (content scrolls behind)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -438,7 +438,7 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
-    # ── Pinned timer pane (fixed, always visible at top) ───────────────────
+    # ── Fixed timer pane (always visible at top of screen) ─────────────────
     timer_running = False
 
     if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
@@ -472,11 +472,11 @@ def take_quiz_section():
             
             if st.session_state.get('time_limit_minutes'):
                 mins, secs = divmod(remaining_sec, 60)
-                timer_text = f"⏳ **Time remaining: {mins:02d}:{secs:02d}**"
+                timer_text = f"⏳ Time remaining: {mins:02d}:{secs:02d}"
             else:
                 timer_text = "⏳ No time limit"
 
-            # Fixed pane – content scrolls behind it
+            # Fixed pane at the top – full width, content scrolls behind
             st.markdown(
                 f"""
                 <div style="
@@ -496,12 +496,12 @@ def take_quiz_section():
                 ">
                     {timer_text}
                 </div>
-                <div style="height: 60px;"></div>  <!-- Spacer so first content is not hidden -->
+                <div style="height: 68px;"></div>  <!-- Spacer: prevents content from being hidden under fixed bar -->
                 """,
                 unsafe_allow_html=True
             )
 
-    # ── Quiz content starts here (scrolls normally) ────────────────────────
+    # ── Main quiz content (scrolls normally underneath the timer) ──────────
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
