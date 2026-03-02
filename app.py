@@ -7,7 +7,7 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 # ───────────────────────────────────────────────
-# MongoDB Helpers (unchanged)
+# MongoDB Helpers
 # ───────────────────────────────────────────────
 @st.cache_resource
 def get_mongo_client():
@@ -429,7 +429,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – timer in top pane (always visible)
+# Take quiz section – timer pinned at top (fixed pane, content scrolls behind)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -438,74 +438,73 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
-    # ── Top pane for timer (fixed-like, always on top)
-    timer_container = st.container()
-    with timer_container:
-        if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
-            elapsed = datetime.now() - st.session_state.quiz_start_time
-            remaining_sec = 999_999_999
+    # ── Pinned timer pane (fixed, always visible at top) ───────────────────
+    timer_running = False
+
+    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
+        elapsed = datetime.now() - st.session_state.quiz_start_time
+        remaining_sec = 999_999_999
+        
+        if st.session_state.get('time_limit_minutes'):
+            remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
+        
+        if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
+            st.session_state.timer_expired = True
+            st.session_state.show_answers = True
+            
+            correct_count = 0
+            shuffled_questions = st.session_state.shuffled_questions or original_questions
+            for i, q in enumerate(shuffled_questions):
+                orig_i = original_questions.index(q)
+                u_idx = st.session_state.user_answers.get(i)
+                if u_idx is None: continue
+                map_ = st.session_state.option_shuffles.get(orig_i, [])
+                if not map_: continue
+                orig_choice_idx = map_[u_idx]
+                if q["options"][orig_choice_idx] == q.get("correct"):
+                    correct_count += 1
+            st.session_state.score = (correct_count, len(shuffled_questions))
+            
+            st.error("⏰ Time's up! Quiz auto-submitted.")
+            st.rerun()
+        else:
+            timer_running = True
             
             if st.session_state.get('time_limit_minutes'):
-                remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
-            
-            if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
-                st.session_state.timer_expired = True
-                st.session_state.show_answers = True
-                
-                correct_count = 0
-                shuffled_questions = st.session_state.shuffled_questions or original_questions
-                for i, q in enumerate(shuffled_questions):
-                    orig_i = original_questions.index(q)
-                    u_idx = st.session_state.user_answers.get(i)
-                    if u_idx is None: continue
-                    map_ = st.session_state.option_shuffles.get(orig_i, [])
-                    if not map_: continue
-                    orig_choice_idx = map_[u_idx]
-                    if q["options"][orig_choice_idx] == q.get("correct"):
-                        correct_count += 1
-                st.session_state.score = (correct_count, len(shuffled_questions))
-                
-                st.error("⏰ Time's up! Quiz auto-submitted.")
-                st.rerun()
+                mins, secs = divmod(remaining_sec, 60)
+                timer_text = f"⏳ **Time remaining: {mins:02d}:{secs:02d}**"
             else:
-                timer_running = True
-                
-                if st.session_state.get('time_limit_minutes'):
-                    mins, secs = divmod(remaining_sec, 60)
-                    timer_text = f"⏳ Time remaining: {mins:02d}:{secs:02d}"
-                else:
-                    timer_text = "⏳ No time limit"
+                timer_text = "⏳ No time limit"
 
-                st.markdown(
-                    f"""
-                    <div style="
-                        position: sticky;
-                        top: 0;
-                        background-color: #0e1117;
-                        color: white;
-                        padding: 12px 20px;
-                        border-radius: 0 0 8px 8px;
-                        text-align: center;
-                        font-size: 1.2rem;
-                        font-weight: 600;
-                        z-index: 999;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-                        border-bottom: 1px solid #444;
-                        margin-bottom: 1rem;
-                    ">
-                        {timer_text}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-        else:
-            timer_running = False
+            # Fixed pane – content scrolls behind it
+            st.markdown(
+                f"""
+                <div style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    background: #0e1117;
+                    color: white;
+                    padding: 12px 20px;
+                    text-align: center;
+                    font-size: 1.2rem;
+                    font-weight: 600;
+                    z-index: 9999;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    border-bottom: 1px solid #444;
+                ">
+                    {timer_text}
+                </div>
+                <div style="height: 60px;"></div>  <!-- Spacer so first content is not hidden -->
+                """,
+                unsafe_allow_html=True
+            )
 
-    # Main quiz content starts below the timer pane
+    # ── Quiz content starts here (scrolls normally) ────────────────────────
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-    # ── Start quiz selection ───────────────────────────────────────────────
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
         st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer, and your selections will Shuffle.")
         time_options = [
@@ -530,7 +529,6 @@ def take_quiz_section():
             st.session_state.quiz_start_time = datetime.now()
             st.rerun()
 
-    # ── Shuffle questions ──────────────────────────────────────────────────
     if st.session_state.shuffled_questions is None and original_questions:
         shuffled_idx = list(range(len(original_questions)))
         random.shuffle(shuffled_idx)
@@ -545,7 +543,6 @@ def take_quiz_section():
 
     shuffled_questions = st.session_state.shuffled_questions or original_questions
 
-    # ── Questions ──────────────────────────────────────────────────────────
     for i, q in enumerate(shuffled_questions):
         st.subheader(f"Q{i+1}. {q.get('question', '—')}")
         orig_idx = original_questions.index(q)
@@ -636,7 +633,7 @@ def take_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Main Layout (unchanged)
+# Main Layout
 # ───────────────────────────────────────────────
 st.title("NextGen Dev")
 
