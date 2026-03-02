@@ -442,71 +442,6 @@ def take_quiz_section():
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-    # ── Sticky floating timer ───────────────────────────────────────────────
-    timer_container = st.container()
-    with timer_container:
-        if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
-            elapsed = datetime.now() - st.session_state.quiz_start_time
-            remaining_sec = 999_999_999
-            
-            if st.session_state.get('time_limit_minutes'):
-                remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
-            
-            if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
-                # Time's up → auto-submit + calculate score
-                st.session_state.timer_expired = True
-                st.session_state.show_answers = True
-                
-                # ── Calculate score on timeout ────────────────────────────────
-                correct_count = 0
-                shuffled_questions = st.session_state.shuffled_questions or original_questions
-                for i, q in enumerate(shuffled_questions):
-                    orig_i = original_questions.index(q)
-                    u_idx = st.session_state.user_answers.get(i)
-                    if u_idx is None:
-                        continue
-                    map_ = st.session_state.option_shuffles.get(orig_i, [])
-                    if not map_:
-                        continue
-                    orig_choice_idx = map_[u_idx]
-                    if q["options"][orig_choice_idx] == q["correct"]:
-                        correct_count += 1
-                
-                st.session_state.score = (correct_count, len(shuffled_questions))
-                # ────────────────────────────────────────────────────────────────
-                
-                st.error("⏰ Time's up! Quiz auto-submitted.")
-                st.rerun()
-            else:
-                if st.session_state.get('time_limit_minutes'):
-                    mins, secs = divmod(remaining_sec, 60)
-                    timer_text = f"⏳ **Time remaining: {mins:02d}:{secs:02d}**"
-                else:
-                    timer_text = "⏳ No time limit"
-
-                # Sticky style
-                st.markdown(
-                    f"""
-                    <div style="
-                        position: sticky;
-                        top: 0.5rem;
-                        background-color: #0e1117;
-                        padding: 12px;
-                        border-radius: 8px;
-                        margin: 0 auto 1rem auto;
-                        z-index: 999;
-                        border: 1px solid #4a4a4a;
-                        text-align: center;
-                        font-size: 1.2rem;
-                        max-width: 800px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-                    ">
-                        {timer_text}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
         st.session_state.shuffled_questions = None
         st.session_state.option_shuffles = {}
@@ -525,7 +460,110 @@ def take_quiz_section():
 
     shuffled_questions = st.session_state.shuffled_questions or original_questions
 
-    # ── Questions ───────────────────────────────────────────────────────────
+    #timer_placeholder = st.empty()
+
+
+    st.header(f"Quiz: {title}")
+    st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
+        # ── Sticky visible timer (added – stays at top when scrolling) ────────
+    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
+        elapsed = datetime.now() - st.session_state.quiz_start_time
+        remaining_sec = 999_999_999
+        
+        if st.session_state.get('time_limit_minutes'):
+            remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
+        
+        if remaining_sec > 0:
+            if st.session_state.get('time_limit_minutes'):
+                mins, secs = divmod(remaining_sec, 60)
+                timer_text = f"⏳ Time remaining: {mins:02d}:{secs:02d}"
+            else:
+                timer_text = "⏳ No time limit set"
+            
+            st.markdown(
+                f"""
+                <div style="
+                    position: sticky;
+                    top: 0.5rem;
+                    background-color: #0e1117;
+                    color: #fafafa;
+                    padding: 10px 16px;
+                    border-radius: 8px;
+                    margin: 0.5rem auto 1.2rem auto;
+                    z-index: 999;
+                    border: 1px solid #444;
+                    text-align: center;
+                    font-weight: 500;
+                    font-size: 1.1rem;
+                    max-width: 640px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+                ">
+                    {timer_text}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
+        st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer, and your selections will Shuffle.")
+        time_options = [
+            "No timer", "5 minutes", "10 minutes", "15 minutes", "20 minutes",
+            "25 minutes", "30 minutes", "40 minutes", "50 minutes", "60 minutes"
+        ]
+        selected_time = st.selectbox(
+            "Time limit",
+            options=time_options,
+            index=0,
+            key="time_limit_select_unique"
+        )
+        if st.button("Start Quiz", type="primary"):
+            if selected_time != "No timer":
+                try:
+                    minutes = int(selected_time.split()[0])
+                    st.session_state.time_limit_minutes = minutes
+                    st.session_state.quiz_start_time = datetime.now()
+                except:
+                    st.session_state.time_limit_minutes = None
+                    st.session_state.quiz_start_time = datetime.now()
+            else:
+                st.session_state.time_limit_minutes = None
+                st.session_state.quiz_start_time = datetime.now()
+            st.rerun()
+
+            timer_running = False
+    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
+        elapsed = datetime.now() - st.session_state.quiz_start_time
+        remaining_sec = 999_999_999
+        if st.session_state.get('time_limit_minutes'):
+            remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
+        
+        if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
+            st.session_state.timer_expired = True
+            st.session_state.show_answers = True
+            
+            # Calculate score when time runs out (this was missing before)
+            correct_count = 0
+            for i, q in enumerate(shuffled_questions):
+                orig_i = original_questions.index(q)
+                u_idx = st.session_state.user_answers.get(i)
+                if u_idx is None:
+                    continue
+                map_ = st.session_state.option_shuffles.get(orig_i, list(range(len(q.get("options", [])))))
+                if not map_:
+                    continue
+                orig_choice_idx = map_[u_idx]
+                if q["options"][orig_choice_idx] == q.get("correct"):
+                    correct_count += 1
+            
+            st.session_state.score = (correct_count, len(shuffled_questions))
+            
+            st.error("⏰ Time's up! Quiz auto-submitted.")
+            st.rerun()
+        else:
+            timer_running = True
+            # Timer display is now handled by the sticky markdown higher up
+
+
     for i, q in enumerate(shuffled_questions):
         st.subheader(f"Q{i+1}. {q.get('question', '—')}")
         orig_idx = original_questions.index(q)
@@ -538,7 +576,7 @@ def take_quiz_section():
         shuffle_map = st.session_state.option_shuffles.get(orig_idx, list(range(len(opts_orig))))
         opts_shuffled = [opts_orig[j] for j in shuffle_map]
 
-        key = f"ans_{i}_{title}"
+        key = f"ans_{i}_{title}"  # unique per quiz title
         if not st.session_state.show_answers and not st.session_state.timer_expired:
             choice = st.radio("Your answer:", opts_shuffled,
                               index=st.session_state.user_answers.get(i, None),
@@ -610,10 +648,10 @@ def take_quiz_section():
                         st.session_state[k] = None
             st.rerun()
 
-    # Auto-refresh timer every second (only when running)
-    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
+    if timer_running:
         time.sleep(1)
         st.rerun()
+
 
 # ───────────────────────────────────────────────
 # Main Layout
