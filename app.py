@@ -100,7 +100,7 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
-# Session State Initialization (unchanged)
+# Session State Initialization
 # ───────────────────────────────────────────────
 defaults = {
     'quizzes': {},
@@ -133,7 +133,7 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Timer helper (added - minimal change)
+# Timer helper
 # ───────────────────────────────────────────────
 def get_timer_text():
     if st.session_state.quiz_start_time is None:
@@ -160,9 +160,8 @@ timer_text = get_timer_text()
 
 
 # ───────────────────────────────────────────────
-# Admin helpers (unchanged)
+# Admin helpers – NOW USING SECRETS
 # ───────────────────────────────────────────────
-ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or move to secrets!
 def is_admin():
     return st.session_state.get("admin_logged_in", False)
 
@@ -316,65 +315,6 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Edit quiz form (unchanged)
-# ───────────────────────────────────────────────
-def edit_quiz_form_inner():
-    if not st.session_state.get('edit_quiz_title'):
-        return
-    title = st.session_state.edit_quiz_title
-    data = st.session_state.edit_quiz_data
-    st.subheader(f"Editing Quiz: {title}")
-
-    edited_title = st.text_input("Quiz Title", value=data.get("quiz_title", title), key="edit_title_input")
-
-    all_depts = sorted(set(get_all_departments()) | {"Uncategorized"})
-    current_dept = data.get("department") or data.get("category", "Uncategorized")
-    dept_index = all_depts.index(current_dept) if current_dept in all_depts else 0
-
-    department = st.selectbox(
-        "Department / Category",
-        options=all_depts + ["New department..."],
-        index=dept_index,
-        key="edit_dept_select"
-    )
-    new_dept = ""
-    if department == "New department...":
-        new_dept = st.text_input("New department name", key="edit_new_dept_input").strip()
-    final_dept = new_dept or department
-
-    current_subcat = data.get("subcategory", "")
-    subcategory = st.text_input("Sub-category / Topic (optional)", value=current_subcat, key="edit_subcat_input")
-
-    current_level = data.get("level", "")
-    level_options = [""] + get_all_levels()
-    if current_level and current_level not in level_options:
-        level_options.append(current_level)
-    level = st.selectbox("Level", level_options + ["Other..."], index=level_options.index(current_level) if current_level in level_options else 0, key="edit_level")
-    if level == "Other...":
-        level = st.text_input("Custom level", key="edit_custom_level").strip()
-
-    current_sem = data.get("semester", "")
-    semester = st.selectbox("Semester", ["", "First Semester", "Second Semester", "Other..."], index=["", "First Semester", "Second Semester"].index(current_sem) if current_sem in ["", "First Semester", "Second Semester"] else 0, key="edit_semester")
-    if semester == "Other...":
-        semester = st.text_input("Custom semester", key="edit_custom_semester").strip()
-
-    course = st.text_input("Course", value=data.get("course", ""), key="edit_course").strip()
-
-    week = st.text_input("Week", value=data.get("week", ""), key="edit_week")
-
-    quiz_cat = st.text_input("Quiz Category", value=data.get("quiz_category", ""), key="edit_quiz_cat")
-
-    current_json = json.dumps(data, indent=2, ensure_ascii=False)
-    edited_json = st.text_area("Quiz JSON (edit carefully)", value=current_json, height=400, key="edit_json_area")
-
-    st.form_submit_button("💾 Save Changes", type="primary", key="edit_save_inner")
-    if st.form_submit_button("Cancel / Close editor", key="edit_cancel_inner"):
-        st.session_state.edit_quiz_title = None
-        st.session_state.edit_quiz_data = None
-        st.rerun()
-
-
-# ───────────────────────────────────────────────
 # Organize quizzes (unchanged)
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
@@ -465,14 +405,12 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
-    # ── Layout: left = questions, right = fixed pane ───────────────────────
     left_col, right_col = st.columns([7, 3])
 
     with left_col:
         st.header(f"Quiz: {title}")
         st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-        # Time selection (before start)
         if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
             st.info("Optional: choose a time limit for this attempt and click Start Quiz. If you skip this, there will be no timer.")
             time_options = [
@@ -497,7 +435,6 @@ def take_quiz_section():
                 st.session_state.quiz_start_time = datetime.now()
                 st.rerun()
 
-        # Shuffle questions once
         if st.session_state.shuffled_questions is None and original_questions:
             shuffled_idx = list(range(len(original_questions)))
             random.shuffle(shuffled_idx)
@@ -512,7 +449,6 @@ def take_quiz_section():
 
         shuffled_questions = st.session_state.shuffled_questions or original_questions
 
-        # Questions loop
         for i, q in enumerate(shuffled_questions):
             st.subheader(f"Q{i+1}. {q.get('question', '—')}")
             orig_idx = original_questions.index(q)
@@ -597,15 +533,13 @@ def take_quiz_section():
                             st.session_state[k] = None
                 st.rerun()
 
-    # ── Right fixed pane (timer + status) ──────────────────────────────────
     with right_col:
-        # Improved sticky/fixed styling for the right pane
         st.markdown(
             """
             <style>
                 .fixed-right-pane {
                     position: sticky;
-                    top: 4rem;                  /* ← changed: better position below header */
+                    top: 4rem;
                     background: #0e1117;
                     border-radius: 12px;
                     border: 1px solid #4a5568;
@@ -639,12 +573,9 @@ def take_quiz_section():
         )
 
         st.markdown('<div class="fixed-right-pane">', unsafe_allow_html=True)
-
         st.markdown("### Quiz Status")
-
         st.markdown(f'<div class="timer-display">⏱️ {timer_text}</div>', unsafe_allow_html=True)
 
-        # Optional extra info
         if st.session_state.shuffled_questions:
             current_q = len(st.session_state.user_answers)
             total_q = len(st.session_state.shuffled_questions)
@@ -667,7 +598,15 @@ with st.sidebar:
         with st.expander("Admin Zone"):
             pwd = st.text_input("Admin password", type="password", key="admin_pwd_input")
             if st.button("Login as Admin"):
-                if pwd.strip() == ADMIN_PASSWORD:
+                try:
+                    correct_pwd = st.secrets["admin"]["password"]
+                except (KeyError, AttributeError):
+                    st.error("Admin password not configured in secrets.\n\n"
+                             "Add to secrets.toml or Streamlit Cloud secrets:\n"
+                             "[admin]\npassword = \"your-strong-password\"")
+                    st.stop()
+
+                if pwd.strip() == correct_pwd:
                     st.session_state.admin_logged_in = True
                     st.rerun()
                 else:
