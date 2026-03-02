@@ -7,7 +7,7 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 # ───────────────────────────────────────────────
-# MongoDB Helpers (unchanged)
+# MongoDB Helpers
 # ───────────────────────────────────────────────
 @st.cache_resource
 def get_mongo_client():
@@ -100,7 +100,7 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
-# Session State Initialization (unchanged)
+# Session State Initialization
 # ───────────────────────────────────────────────
 defaults = {
     'quizzes': {},
@@ -133,15 +133,15 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Admin helpers (unchanged)
+# Admin helpers
 # ───────────────────────────────────────────────
-ADMIN_PASSWORD = "quizmaster2025" # ← CHANGE THIS or move to secrets!
+ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or move to secrets!
 def is_admin():
     return st.session_state.get("admin_logged_in", False)
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers — ADDED CACHING HERE (unchanged)
+# Hierarchy helpers
 # ───────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def get_all_departments():
@@ -211,7 +211,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz (unchanged)
+# Add new quiz
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -348,7 +348,7 @@ def edit_quiz_form_inner():
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes (unchanged)
+# Organize quizzes
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -429,7 +429,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – FIXED timer stays visible on scroll
+# Take quiz section – timer in fixed pane (does NOT scroll with page)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -441,10 +441,10 @@ def take_quiz_section():
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-    # Always define timer_running first – prevents UnboundLocalError
+    # Always define timer_running first
     timer_running = False
 
-    # ── Timer logic + sticky display (runs only when quiz is active) ───────
+    # ── Fixed timer pane (always visible at top of screen) ────────────────
     if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
         elapsed = datetime.now() - st.session_state.quiz_start_time
         remaining_sec = 999_999_999
@@ -456,7 +456,7 @@ def take_quiz_section():
             st.session_state.timer_expired = True
             st.session_state.show_answers = True
             
-            # Auto-calculate score
+            # Auto-calculate score on timeout
             correct_count = 0
             shuffled_questions = st.session_state.shuffled_questions or original_questions
             for i, q in enumerate(shuffled_questions):
@@ -477,28 +477,30 @@ def take_quiz_section():
             
             if st.session_state.get('time_limit_minutes'):
                 mins, secs = divmod(remaining_sec, 60)
-                timer_text = f"⏳ **Time remaining: {mins:02d}:{secs:02d}**"
+                timer_text = f"⏳ Time remaining: {mins:02d}:{secs:02d}"
             else:
                 timer_text = "⏳ No time limit"
 
-            # Sticky timer – stays visible when scrolling
+            # Fixed pane (does NOT scroll with page)
             st.markdown(
                 f"""
                 <div style="
-                    position: sticky;
-                    top: 0.5rem;
-                    background-color: #0e1117;
+                    position: fixed;
+                    top: 1rem;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #0e1117;
                     color: white;
-                    padding: 10px 20px;
+                    padding: 10px 24px;
                     border-radius: 8px;
-                    text-align: center;
                     font-size: 1.15rem;
                     font-weight: 600;
-                    z-index: 999;
-                    margin: 0 auto 1rem auto;
-                    max-width: 700px;
+                    z-index: 9999;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
                     border: 1px solid #444;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+                    min-width: 240px;
+                    text-align: center;
+                    pointer-events: none;
                 ">
                     {timer_text}
                 </div>
@@ -546,7 +548,7 @@ def take_quiz_section():
 
     shuffled_questions = st.session_state.shuffled_questions or original_questions
 
-    # ── Questions ──────────────────────────────────────────────────────────
+    # ── Questions loop ─────────────────────────────────────────────────────
     for i, q in enumerate(shuffled_questions):
         st.subheader(f"Q{i+1}. {q.get('question', '—')}")
         orig_idx = original_questions.index(q)
@@ -631,14 +633,13 @@ def take_quiz_section():
                         st.session_state[k] = None
             st.rerun()
 
-    # Timer refresh only when active
     if timer_running:
         time.sleep(1)
         st.rerun()
 
 
 # ───────────────────────────────────────────────
-# Main Layout (unchanged)
+# Main Layout
 # ───────────────────────────────────────────────
 st.title("NextGen Dev")
 
@@ -825,7 +826,7 @@ else:
 # ── Edit form ───────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     title = st.session_state.edit_quiz_title
-    data = st.session_state.edit_quiz_data  # working copy
+    data = st.session_state.edit_quiz_data
 
     st.markdown("---")
     st.subheader(f"Editing Quiz: {title}")
