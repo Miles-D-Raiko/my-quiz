@@ -133,7 +133,7 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Timer helper - returns seconds remaining (used for initial value)
+# Timer helper - returns seconds remaining
 # ───────────────────────────────────────────────
 def get_remaining_seconds():
     if st.session_state.quiz_start_time is None:
@@ -387,7 +387,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – with real-time JS countdown + adjusted timer position
+# Take quiz section – MM:SS countdown timer
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -396,15 +396,15 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
-    # ── Floating timer CSS – shifted more toward middle of right side ───────
+    # ── Floating timer CSS ────────────────────────────────
     st.markdown(
         """
         <style>
             .quiz-floating-timer {
                 position: fixed;
                 top: 1rem;
-                right: 3rem;                    /* more space from right edge */
-                transform: translateX(35%);     /* pulls it left → more centered in right half */
+                right: 3rem;
+                transform: translateX(35%);
                 z-index: 9999;
                 background: #1a1f2e;
                 color: #facc15;
@@ -413,7 +413,7 @@ def take_quiz_section():
                 border: 1px solid #4a5568;
                 box-shadow: 0 10px 30px -10px rgba(0,0,0,0.7);
                 font-family: monospace;
-                min-width: 160px;
+                min-width: 180px;
                 text-align: center;
                 backdrop-filter: blur(6px);
                 -webkit-backdrop-filter: blur(6px);
@@ -427,9 +427,11 @@ def take_quiz_section():
             }
 
             .timer-seconds {
-                font-size: 2.8rem;
+                font-size: 3rem;
                 font-weight: bold;
-                line-height: 1;
+                line-height: 1.1;
+                letter-spacing: 2px;
+                font-variant-numeric: tabular-nums;
             }
 
             .timer-expired {
@@ -457,39 +459,48 @@ def take_quiz_section():
         unsafe_allow_html=True
     )
 
-    # ── Floating timer with JavaScript countdown ───────
+    # ── Floating timer with MM:SS countdown ───────
     remaining_sec = get_remaining_seconds()
 
-    if remaining_sec is not None and remaining_sec > 0:
-        initial_display = str(remaining_sec)
-        timer_class = ""
-        expired_text = "TIME UP"
+    if remaining_sec is not None:
+        if remaining_sec > 0:
+            initial_minutes = remaining_sec // 60
+            initial_seconds = remaining_sec % 60
+            initial_display = f"{initial_minutes:02d}:{initial_seconds:02d}"
+            timer_class = ""
+        else:
+            initial_display = "00:00"
+            timer_class = "timer-expired"
     else:
-        initial_display = "—"
-        timer_class = "timer-expired" if st.session_state.timer_expired else ""
-        expired_text = "TIME UP"
+        initial_display = "--:--"
+        timer_class = ""
 
     st.markdown(
         f"""
         <div class="quiz-floating-timer {timer_class}" id="floating-timer">
             <h4>Time Remaining</h4>
-            <div class="timer-seconds" id="timer-seconds">{initial_display}</div>
+            <div class="timer-seconds" id="timer-display">{initial_display}</div>
         </div>
 
         <script>
-            const timerElement = document.getElementById("timer-seconds");
+            const displayElement = document.getElementById("timer-display");
             const container = document.getElementById("floating-timer");
-            let seconds = {remaining_sec if remaining_sec is not None and remaining_sec > 0 else 0};
+            let totalSeconds = {remaining_sec if remaining_sec is not None else 0};
 
-            if (seconds > 0) {{
+            if (totalSeconds > 0) {{
                 const countdown = setInterval(() => {{
-                    seconds--;
-                    if (seconds <= 0) {{
+                    totalSeconds--;
+                    
+                    if (totalSeconds <= 0) {{
                         clearInterval(countdown);
-                        timerElement.textContent = "{expired_text}";
+                        displayElement.textContent = "00:00";
                         container.classList.add("timer-expired");
                     }} else {{
-                        timerElement.textContent = seconds;
+                        let minutes = Math.floor(totalSeconds / 60);
+                        let seconds = totalSeconds % 60;
+                        displayElement.textContent = 
+                            minutes.toString().padStart(2, '0') + ':' + 
+                            seconds.toString().padStart(2, '0');
                     }}
                 }}, 1000);
             }}
