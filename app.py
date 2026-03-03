@@ -133,24 +133,6 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Timer helper
-# ───────────────────────────────────────────────
-def get_remaining_seconds():
-    if st.session_state.quiz_start_time is None:
-        return None
-    
-    elapsed = (datetime.now() - st.session_state.quiz_start_time).total_seconds()
-    
-    if st.session_state.time_limit_minutes:
-        remaining = st.session_state.time_limit_minutes * 60 - elapsed
-        if remaining <= 0:
-            st.session_state.timer_expired = True
-            return 0
-        return max(0, int(remaining))
-    return None
-
-
-# ───────────────────────────────────────────────
 # Admin helpers
 # ───────────────────────────────────────────────
 def is_admin():
@@ -158,7 +140,7 @@ def is_admin():
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers (unchanged)
+# Hierarchy helpers
 # ───────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def get_all_departments():
@@ -228,7 +210,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz (unchanged)
+# Add new quiz
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -306,7 +288,7 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes (unchanged)
+# Organize quizzes
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -387,7 +369,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – MM:SS countdown timer
+# Take quiz section (timer from the second code)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -396,125 +378,6 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
-    # ── Floating timer CSS ────────────────────────────────
-    st.markdown(
-        """
-        <style>
-            .quiz-floating-timer {
-                position: fixed;
-                top: 1rem;
-                right: 3rem;
-                transform: translateX(35%);
-                z-index: 9999;
-                background: #1a1f2e;
-                color: #facc15;
-                padding: 1rem 1.4rem;
-                border-radius: 12px;
-                border: 1px solid #4a5568;
-                box-shadow: 0 10px 30px -10px rgba(0,0,0,0.7);
-                font-family: monospace;
-                min-width: 180px;
-                text-align: center;
-                backdrop-filter: blur(6px);
-                -webkit-backdrop-filter: blur(6px);
-                transition: all 0.4s ease;
-            }
-
-            .quiz-floating-timer h4 {
-                margin: 0 0 0.4rem 0;
-                font-size: 1.1rem;
-                color: #a5b4fc;
-            }
-
-            .timer-seconds {
-                font-size: 3rem;
-                font-weight: bold;
-                line-height: 1.1;
-                letter-spacing: 2px;
-                font-variant-numeric: tabular-nums;
-            }
-
-            .timer-expired {
-                color: #f87171 !important;
-                background: #3f1e1e;
-                animation: pulse 1.3s infinite;
-            }
-
-            @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50%      { opacity: 0.35; }
-            }
-
-            @media (max-width: 991px) {
-                .quiz-floating-timer {
-                    right: 50%;
-                    transform: translateX(50%);
-                    top: 0.8rem;
-                    width: 90%;
-                    max-width: 340px;
-                }
-            }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # ── Floating timer with MM:SS countdown ───────
-    remaining_sec = get_remaining_seconds()
-
-    if remaining_sec is None:
-        initial_display = "--:--"
-        timer_class = ""
-        js_initial = 0
-    elif remaining_sec <= 0:
-        initial_display = "00:00"
-        timer_class = "timer-expired"
-        js_initial = 0
-    else:
-        minutes = remaining_sec // 60
-        seconds = remaining_sec % 60
-        initial_display = f"{minutes:02d}:{seconds:02d}"
-        timer_class = ""
-        js_initial = remaining_sec
-
-    st.markdown(
-        f"""
-        <div class="quiz-floating-timer {timer_class}" id="floating-timer">
-            <h4>Time Remaining</h4>
-            <div class="timer-seconds" id="timer-display">{initial_display}</div>
-        </div>
-
-        <script>
-            (function() {{
-                var display = document.getElementById('timer-display');
-                var container = document.getElementById('floating-timer');
-                var remaining = {js_initial};
-
-                if (remaining > 0) {{
-                    function updateTimer() {{
-                        remaining--;
-                        if (remaining <= 0) {{
-                            display.textContent = "00:00";
-                            container.classList.add("timer-expired");
-                            return;
-                        }}
-                        var min = Math.floor(remaining / 60);
-                        var sec = remaining % 60;
-                        display.textContent = 
-                            min.toString().padStart(2, '0') + ':' + 
-                            sec.toString().padStart(2, '0');
-                    }}
-
-                    updateTimer();           // run once right away
-                    setInterval(updateTimer, 1000);
-                }}
-            }})();
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # ── Main quiz content ────────────────────────────────
     left_col, right_col = st.columns([7, 3])
 
     with left_col:
@@ -652,6 +515,30 @@ def take_quiz_section():
         if st.session_state.score:
             c, t = st.session_state.score
             st.markdown(f"**Score:** {c}/{t}")
+
+    # ── Timer logic (copied from the second code) ────────────────────────────────
+    timer_running = False
+    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
+        elapsed = datetime.now() - st.session_state.quiz_start_time
+        remaining_sec = 999_999_999  # very large number if no limit
+        if st.session_state.get('time_limit_minutes'):
+            remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
+
+        if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
+            st.session_state.timer_expired = True
+            st.session_state.show_answers = True
+            st.rerun()
+        else:
+            timer_running = True
+            if st.session_state.get('time_limit_minutes'):
+                mins, secs = divmod(remaining_sec, 60)
+                st.caption(f"⏳ **Time remaining: {mins:02d}:{secs:02d}**")
+            else:
+                st.caption("⏳ No time limit")
+
+    if timer_running:
+        time.sleep(1)
+        st.rerun()
 
 
 # ───────────────────────────────────────────────
