@@ -133,11 +133,11 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Timer helper
+# Timer helper - now returns seconds remaining
 # ───────────────────────────────────────────────
-def get_timer_text():
+def get_remaining_seconds():
     if st.session_state.quiz_start_time is None:
-        return "Not started"
+        return None
     
     elapsed = (datetime.now() - st.session_state.quiz_start_time).total_seconds()
     
@@ -145,22 +145,13 @@ def get_timer_text():
         remaining = st.session_state.time_limit_minutes * 60 - elapsed
         if remaining <= 0:
             st.session_state.timer_expired = True
-            return "Time's up!"
-        mins = int(remaining // 60)
-        secs = int(remaining % 60)
-        return f"{mins:02d}:{secs:02d} remaining"
-    else:
-        mins = int(elapsed // 60)
-        secs = int(elapsed % 60)
-        return f"{mins:02d}:{secs:02d} elapsed"
-
-
-# Compute timer text on every page run
-timer_text = get_timer_text()
+            return 0
+        return max(0, int(remaining))
+    return None  # no timer
 
 
 # ───────────────────────────────────────────────
-# Admin helpers – NOW USING SECRETS
+# Admin helpers
 # ───────────────────────────────────────────────
 def is_admin():
     return st.session_state.get("admin_logged_in", False)
@@ -396,7 +387,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – with right fixed pane for timer & status
+# Take quiz section – improved floating timer
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -405,6 +396,83 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
+    # ── Floating timer CSS ────────────────────────────────
+    st.markdown(
+        """
+        <style>
+            .quiz-floating-timer {
+                position: fixed;
+                top: 1rem;
+                right: 1rem;
+                z-index: 9999;
+                background: #1a1f2e;
+                color: #facc15;
+                padding: 1rem 1.4rem;
+                border-radius: 12px;
+                border: 1px solid #4a5568;
+                box-shadow: 0 10px 30px -10px rgba(0,0,0,0.7);
+                font-family: monospace;
+                min-width: 160px;
+                text-align: center;
+                backdrop-filter: blur(6px);
+                -webkit-backdrop-filter: blur(6px);
+            }
+
+            .quiz-floating-timer h4 {
+                margin: 0 0 0.4rem 0;
+                font-size: 1.1rem;
+                color: #a5b4fc;
+            }
+
+            .timer-seconds {
+                font-size: 2.8rem;
+                font-weight: bold;
+                line-height: 1;
+            }
+
+            .timer-expired {
+                color: #f87171 !important;
+                animation: pulse 1.3s infinite;
+            }
+
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50%      { opacity: 0.35; }
+            }
+
+            @media (max-width: 991px) {
+                .quiz-floating-timer {
+                    right: 50%;
+                    transform: translateX(50%);
+                    top: 0.8rem;
+                    width: 90%;
+                    max-width: 340px;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # ── Floating timer display ────────────────────────────────
+    remaining_sec = get_remaining_seconds()
+
+    timer_class = "timer-expired" if st.session_state.timer_expired else ""
+    timer_text = str(remaining_sec) if remaining_sec is not None else "—"
+    if remaining_sec == 0:
+        timer_text = "TIME UP"
+
+    st.markdown(
+        f"""
+        <div class="quiz-floating-timer {timer_class}">
+            <h4>Time Remaining</h4>
+            <div class="timer-seconds">{timer_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # ── Main quiz content ────────────────────────────────
     left_col, right_col = st.columns([7, 3])
 
     with left_col:
@@ -534,48 +602,7 @@ def take_quiz_section():
                 st.rerun()
 
     with right_col:
-        st.markdown(
-            """
-            <style>
-                .fixed-right-pane {
-                    position: sticky;
-                    top: 4rem;
-                    background: #0e1117;
-                    border-radius: 12px;
-                    border: 1px solid #4a5568;
-                    padding: 1.4rem 1.2rem;
-                    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.6);
-                    z-index: 999;
-                    margin-left: 1rem;
-                    min-height: 140px;
-                }
-                .fixed-right-pane h3 {
-                    margin-top: 0;
-                    color: #a5b4fc;
-                }
-                .timer-display {
-                    font-size: 1.7rem;
-                    font-weight: bold;
-                    color: #facc15;
-                    margin: 1rem 0;
-                    text-align: center;
-                }
-                @media (max-width: 991px) {
-                    .fixed-right-pane {
-                        position: static;
-                        margin: 1.5rem auto;
-                        width: 90%;
-                    }
-                }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.markdown('<div class="fixed-right-pane">', unsafe_allow_html=True)
-        st.markdown("### Quiz Status")
-        st.markdown(f'<div class="timer-display">⏱️ {timer_text}</div>', unsafe_allow_html=True)
-
+        # You can keep some status info here if you want
         if st.session_state.shuffled_questions:
             current_q = len(st.session_state.user_answers)
             total_q = len(st.session_state.shuffled_questions)
@@ -584,8 +611,6 @@ def take_quiz_section():
         if st.session_state.score:
             c, t = st.session_state.score
             st.markdown(f"**Score:** {c}/{t}")
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ───────────────────────────────────────────────
