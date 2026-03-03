@@ -369,7 +369,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – with FIXED floating timer
+# Take quiz section (timer from the second code)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -377,92 +377,6 @@ def take_quiz_section():
     dept = quiz.get('department', quiz.get('category', 'Uncategorized'))
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
-
-    # ── Floating fixed timer (JavaScript powered) ────────────────────────────────
-    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers and st.session_state.get('time_limit_minutes'):
-        limit_seconds = int(st.session_state.time_limit_minutes * 60)
-        start_timestamp_ms = int(st.session_state.quiz_start_time.timestamp() * 1000)
-
-        st.markdown(
-            f"""
-            <style>
-                .fixed-timer {{
-                    position: fixed;
-                    top: 110px;
-                    right: 24px;
-                    z-index: 999;
-                    background: #0f172a;
-                    color: #a5f3fc;
-                    padding: 12px 20px;
-                    border-radius: 10px;
-                    font-family: 'Courier New', monospace;
-                    font-size: 1.4rem;
-                    font-weight: bold;
-                    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-                    border: 1px solid #67e8f980;
-                    min-width: 170px;
-                    text-align: center;
-                    user-select: none;
-                    pointer-events: none;
-                }}
-                .fixed-timer.warning {{
-                    background: #7f1d1d;
-                    color: #fecaca;
-                    border-color: #f8717180;
-                }}
-                @media (max-width: 768px) {{
-                    .fixed-timer {{
-                        top: 80px;
-                        right: 16px;
-                        font-size: 1.1rem;
-                        padding: 10px 16px;
-                        min-width: 140px;
-                    }}
-                }}
-            </style>
-
-            <div id="floating-timer" class="fixed-timer">
-                ⏳ --:--
-            </div>
-
-            <script>
-                const startTime = {start_timestamp_ms};
-                const limitSec = {limit_seconds};
-
-                function updateTimer() {{
-                    const now = Date.now();
-                    const elapsed = Math.floor((now - startTime) / 1000);
-                    let remaining = limitSec - elapsed;
-                    if (remaining < 0) remaining = 0;
-
-                    const mins = Math.floor(remaining / 60).toString().padStart(2, '0');
-                    const secs = (remaining % 60).toString().padStart(2, '0');
-
-                    const el = document.getElementById('floating-timer');
-                    if (el) {{
-                        el.innerText = `⏳ ${{mins}}:${{secs}}`;
-                        if (remaining <= 60) {{
-                            el.classList.add('warning');
-                        }} else {{
-                            el.classList.remove('warning');
-                        }}
-                    }}
-
-                    if (remaining === 0) {{
-                        // Optional: trigger page refresh when time's up
-                        // setTimeout(() => {{ window.location.reload(); }}, 1500);
-                    }}
-                }}
-
-                updateTimer();
-                const timerInterval = setInterval(updateTimer, 980);
-
-                // Clean up when component unmounts (best effort)
-                window.addEventListener('beforeunload', () => clearInterval(timerInterval));
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
 
     left_col, right_col = st.columns([7, 3])
 
@@ -602,12 +516,29 @@ def take_quiz_section():
             c, t = st.session_state.score
             st.markdown(f"**Score:** {c}/{t}")
 
-        # Optional: small fallback timer text if JS fails (very rare)
-        if st.session_state.quiz_start_time and st.session_state.get('time_limit_minutes') and not st.session_state.show_answers:
-            elapsed = datetime.now() - st.session_state.quiz_start_time
+    # ── Timer logic (copied from the second code) ────────────────────────────────
+    timer_running = False
+    if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
+        elapsed = datetime.now() - st.session_state.quiz_start_time
+        remaining_sec = 999_999_999  # very large number if no limit
+        if st.session_state.get('time_limit_minutes'):
             remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
-            mins, secs = divmod(remaining_sec, 60)
-            st.caption(f"Time left: {mins:02d}:{secs:02d}")
+
+        if remaining_sec <= 0 and st.session_state.get('time_limit_minutes'):
+            st.session_state.timer_expired = True
+            st.session_state.show_answers = True
+            st.rerun()
+        else:
+            timer_running = True
+            if st.session_state.get('time_limit_minutes'):
+                mins, secs = divmod(remaining_sec, 60)
+                st.caption(f"⏳ **Time remaining: {mins:02d}:{secs:02d}**")
+            else:
+                st.caption("⏳ No time limit")
+
+    if timer_running:
+        time.sleep(1)
+        st.rerun()
 
 
 # ───────────────────────────────────────────────
