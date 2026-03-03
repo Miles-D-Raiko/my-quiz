@@ -158,7 +158,7 @@ def is_admin():
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers (unchanged)
+# Hierarchy helpers
 # ───────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def get_all_departments():
@@ -228,7 +228,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz (unchanged)
+# Add new quiz
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -306,7 +306,7 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes (unchanged)
+# Organize quizzes
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -387,7 +387,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – with real-time JavaScript countdown
+# Take quiz section – with real-time JS countdown + adjusted timer position
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -396,14 +396,15 @@ def take_quiz_section():
     subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
-    # ── Floating timer CSS ────────────────────────────────
+    # ── Floating timer CSS – shifted more toward middle of right side ───────
     st.markdown(
         """
         <style>
             .quiz-floating-timer {
                 position: fixed;
                 top: 1rem;
-                right: 1rem;
+                right: 3rem;                    /* more space from right edge */
+                transform: translateX(35%);     /* pulls it left → more centered in right half */
                 z-index: 9999;
                 background: #1a1f2e;
                 color: #facc15;
