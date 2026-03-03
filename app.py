@@ -133,7 +133,7 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Timer helper - returns seconds remaining
+# Timer helper
 # ───────────────────────────────────────────────
 def get_remaining_seconds():
     if st.session_state.quiz_start_time is None:
@@ -147,7 +147,7 @@ def get_remaining_seconds():
             st.session_state.timer_expired = True
             return 0
         return max(0, int(remaining))
-    return None  # no timer
+    return None
 
 
 # ───────────────────────────────────────────────
@@ -158,7 +158,7 @@ def is_admin():
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers
+# Hierarchy helpers (unchanged)
 # ───────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def get_all_departments():
@@ -228,7 +228,7 @@ def get_categories_for(selected_levels, selected_semesters, selected_courses, se
 
 
 # ───────────────────────────────────────────────
-# Add new quiz
+# Add new quiz (unchanged)
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -306,7 +306,7 @@ def submit_quiz_section():
 
 
 # ───────────────────────────────────────────────
-# Organize quizzes
+# Organize quizzes (unchanged)
 # ───────────────────────────────────────────────
 def organize_quizzes_section():
     st.subheader("Organize / Move Existing Quizzes")
@@ -462,18 +462,20 @@ def take_quiz_section():
     # ── Floating timer with MM:SS countdown ───────
     remaining_sec = get_remaining_seconds()
 
-    if remaining_sec is not None:
-        if remaining_sec > 0:
-            initial_minutes = remaining_sec // 60
-            initial_seconds = remaining_sec % 60
-            initial_display = f"{initial_minutes:02d}:{initial_seconds:02d}"
-            timer_class = ""
-        else:
-            initial_display = "00:00"
-            timer_class = "timer-expired"
-    else:
+    if remaining_sec is None:
         initial_display = "--:--"
         timer_class = ""
+        js_initial = 0
+    elif remaining_sec <= 0:
+        initial_display = "00:00"
+        timer_class = "timer-expired"
+        js_initial = 0
+    else:
+        minutes = remaining_sec // 60
+        seconds = remaining_sec % 60
+        initial_display = f"{minutes:02d}:{seconds:02d}"
+        timer_class = ""
+        js_initial = remaining_sec
 
     st.markdown(
         f"""
@@ -483,27 +485,30 @@ def take_quiz_section():
         </div>
 
         <script>
-            const displayElement = document.getElementById("timer-display");
-            const container = document.getElementById("floating-timer");
-            let totalSeconds = {remaining_sec if remaining_sec is not None else 0};
+            (function() {{
+                var display = document.getElementById('timer-display');
+                var container = document.getElementById('floating-timer');
+                var remaining = {js_initial};
 
-            if (totalSeconds > 0) {{
-                const countdown = setInterval(() => {{
-                    totalSeconds--;
-                    
-                    if (totalSeconds <= 0) {{
-                        clearInterval(countdown);
-                        displayElement.textContent = "00:00";
-                        container.classList.add("timer-expired");
-                    }} else {{
-                        let minutes = Math.floor(totalSeconds / 60);
-                        let seconds = totalSeconds % 60;
-                        displayElement.textContent = 
-                            minutes.toString().padStart(2, '0') + ':' + 
-                            seconds.toString().padStart(2, '0');
+                if (remaining > 0) {{
+                    function updateTimer() {{
+                        remaining--;
+                        if (remaining <= 0) {{
+                            display.textContent = "00:00";
+                            container.classList.add("timer-expired");
+                            return;
+                        }}
+                        var min = Math.floor(remaining / 60);
+                        var sec = remaining % 60;
+                        display.textContent = 
+                            min.toString().padStart(2, '0') + ':' + 
+                            sec.toString().padStart(2, '0');
                     }}
-                }}, 1000);
-            }}
+
+                    updateTimer();           // run once right away
+                    setInterval(updateTimer, 1000);
+                }}
+            }})();
         </script>
         """,
         unsafe_allow_html=True
