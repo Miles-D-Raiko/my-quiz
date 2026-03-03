@@ -7,7 +7,7 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 # ───────────────────────────────────────────────
-# MongoDB Helpers (unchanged)
+# MongoDB Helpers
 # ───────────────────────────────────────────────
 @st.cache_resource
 def get_mongo_client():
@@ -133,7 +133,7 @@ if "quizzes_loaded" not in st.session_state:
 
 
 # ───────────────────────────────────────────────
-# Timer helper - now returns seconds remaining
+# Timer helper - returns seconds remaining (used for initial value)
 # ───────────────────────────────────────────────
 def get_remaining_seconds():
     if st.session_state.quiz_start_time is None:
@@ -387,7 +387,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section – improved floating timer
+# Take quiz section – with real-time JavaScript countdown
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -416,6 +416,7 @@ def take_quiz_section():
                 text-align: center;
                 backdrop-filter: blur(6px);
                 -webkit-backdrop-filter: blur(6px);
+                transition: all 0.4s ease;
             }
 
             .quiz-floating-timer h4 {
@@ -432,6 +433,7 @@ def take_quiz_section():
 
             .timer-expired {
                 color: #f87171 !important;
+                background: #3f1e1e;
                 animation: pulse 1.3s infinite;
             }
 
@@ -454,20 +456,43 @@ def take_quiz_section():
         unsafe_allow_html=True
     )
 
-    # ── Floating timer display ────────────────────────────────
+    # ── Floating timer with JavaScript countdown ───────
     remaining_sec = get_remaining_seconds()
 
-    timer_class = "timer-expired" if st.session_state.timer_expired else ""
-    timer_text = str(remaining_sec) if remaining_sec is not None else "—"
-    if remaining_sec == 0:
-        timer_text = "TIME UP"
+    if remaining_sec is not None and remaining_sec > 0:
+        initial_display = str(remaining_sec)
+        timer_class = ""
+        expired_text = "TIME UP"
+    else:
+        initial_display = "—"
+        timer_class = "timer-expired" if st.session_state.timer_expired else ""
+        expired_text = "TIME UP"
 
     st.markdown(
         f"""
-        <div class="quiz-floating-timer {timer_class}">
+        <div class="quiz-floating-timer {timer_class}" id="floating-timer">
             <h4>Time Remaining</h4>
-            <div class="timer-seconds">{timer_text}</div>
+            <div class="timer-seconds" id="timer-seconds">{initial_display}</div>
         </div>
+
+        <script>
+            const timerElement = document.getElementById("timer-seconds");
+            const container = document.getElementById("floating-timer");
+            let seconds = {remaining_sec if remaining_sec is not None and remaining_sec > 0 else 0};
+
+            if (seconds > 0) {{
+                const countdown = setInterval(() => {{
+                    seconds--;
+                    if (seconds <= 0) {{
+                        clearInterval(countdown);
+                        timerElement.textContent = "{expired_text}";
+                        container.classList.add("timer-expired");
+                    }} else {{
+                        timerElement.textContent = seconds;
+                    }}
+                }}, 1000);
+            }}
+        </script>
         """,
         unsafe_allow_html=True
     )
@@ -602,7 +627,6 @@ def take_quiz_section():
                 st.rerun()
 
     with right_col:
-        # You can keep some status info here if you want
         if st.session_state.shuffled_questions:
             current_q = len(st.session_state.user_answers)
             total_q = len(st.session_state.shuffled_questions)
