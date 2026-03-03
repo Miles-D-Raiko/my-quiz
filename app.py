@@ -100,6 +100,23 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
+# Helper function for scoring (used by both manual & auto submit)
+# ───────────────────────────────────────────────
+def _calculate_and_store_score(shuffled_questions, original_questions):
+    correct_count = 0
+    for i, q in enumerate(shuffled_questions):
+        orig_i = original_questions.index(q)
+        u_idx = st.session_state.user_answers.get(i)
+        if u_idx is None:
+            continue
+        map_ = st.session_state.option_shuffles.get(orig_i, [])
+        orig_choice_idx = map_[u_idx]
+        if q["options"][orig_choice_idx] == q["correct"]:
+            correct_count += 1
+    st.session_state.score = (correct_count, len(shuffled_questions))
+
+
+# ───────────────────────────────────────────────
 # Session State Initialization
 # ───────────────────────────────────────────────
 defaults = {
@@ -369,7 +386,7 @@ def organize_quizzes_section():
 
 
 # ───────────────────────────────────────────────
-# Take quiz section (with top Start / bottom Submit + dual timers)
+# Take quiz section (with auto-submit when time runs out)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -439,7 +456,7 @@ def take_quiz_section():
             st.rerun()
 
         st.markdown("---")
-        return  # ← important: stop rendering questions until started
+        return
 
     # ── SHUFFLING (only once) ────────────────────────────────
     if st.session_state.shuffled_questions is None and original_questions:
@@ -514,7 +531,7 @@ def take_quiz_section():
 
         st.markdown("---")
 
-    # ── BOTTOM: SUBMIT AREA ──────────────────────────────────
+    # ── BOTTOM: SUBMIT AREA + AUTO-SUBMIT LOGIC ──────────────
     quiz_ended = st.session_state.show_answers or st.session_state.timer_expired
 
     if not quiz_ended:
@@ -533,26 +550,28 @@ def take_quiz_section():
 
         with col_submit:
             if st.button("Submit Quiz", type="primary", use_container_width=True):
-                correct_count = 0
-                for i, q in enumerate(shuffled_questions):
-                    orig_i = original_questions.index(q)
-                    u_idx = st.session_state.user_answers.get(i)
-                    if u_idx is None:
-                        continue
-                    map_ = st.session_state.option_shuffles.get(orig_i, [])
-                    orig_choice_idx = map_[u_idx]
-                    if q["options"][orig_choice_idx] == q["correct"]:
-                        correct_count += 1
-
-                st.session_state.score = (correct_count, len(shuffled_questions))
+                _calculate_and_store_score(shuffled_questions, original_questions)
                 st.session_state.show_answers = True
                 st.rerun()
 
-    # ── RESULTS / REVIEW ─────────────────────────────────────
     else:
+        # Auto-submit when time runs out
+        if st.session_state.timer_expired and st.session_state.score is None:
+            with st.spinner("Time's up! Calculating your score..."):
+                time.sleep(0.8)  # brief delay for better user experience
+                _calculate_and_store_score(shuffled_questions, original_questions)
+            st.rerun()
+
+        # Show results
         if st.session_state.score:
             c, t = st.session_state.score
             pct = c / t * 100 if t > 0 else 0
+
+            # Show time-up message only once
+            if st.session_state.timer_expired and not st.session_state.get('_time_up_message_shown', False):
+                st.error("⏰ **Time's up!** Quiz was automatically submitted.")
+                st.session_state['_time_up_message_shown'] = True
+
             st.success(f"**Score: {c}/{t}** ({pct:.0f}%)")
 
         if not st.session_state.reveal_correct_answers:
@@ -569,7 +588,8 @@ def take_quiz_section():
                 'user_answers', 'show_answers', 'score',
                 'quiz_start_time', 'time_limit_minutes',
                 'timer_expired', 'reveal_correct_answers',
-                'shuffled_questions', 'option_shuffles'
+                'shuffled_questions', 'option_shuffles',
+                '_time_up_message_shown'
             ]
             for k in keys_to_reset:
                 if k in st.session_state:
@@ -580,7 +600,7 @@ def take_quiz_section():
                         st.session_state[k] = None
             st.rerun()
 
-    # ── Auto-refresh timer ───────────────────────────────────
+    # ── Auto-refresh for timer ───────────────────────────────
     if timer_active and not quiz_ended:
         time.sleep(1)
         st.rerun()
