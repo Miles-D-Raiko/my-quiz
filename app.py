@@ -76,7 +76,7 @@ def save_quiz(title: str, data: dict):
             upsert=True
         )
         st.success(f"Quiz **{title}** saved/updated.")
-        load_quizzes()
+        load_quizzes()  # refreshes session state
     except DuplicateKeyError:
         st.error("A quiz with this title already exists.")
     except Exception as e:
@@ -100,7 +100,42 @@ def delete_quiz(title: str):
 
 
 # ───────────────────────────────────────────────
-# Helper function for scoring (used by both manual & auto submit)
+# Cached filtered quiz list (NEW - performance)
+# ───────────────────────────────────────────────
+@st.cache_data(ttl=60, show_spinner=False)
+def get_filtered_quiz_list(
+    dept_tuple=(),
+    level_tuple=(),
+    sem_tuple=(),
+    course_tuple=(),
+    week_tuple=(),
+    cat_tuple=(),
+):
+    if not st.session_state.quizzes:
+        return {}
+
+    filtered = {}
+    for title, quiz in st.session_state.quizzes.items():
+        dept = quiz.get("department") or quiz.get("category", "Uncategorized")
+        if dept_tuple and dept not in dept_tuple:          continue
+        if level_tuple and quiz.get("level") not in level_tuple:       continue
+        if sem_tuple   and quiz.get("semester") not in sem_tuple:     continue
+        if course_tuple and quiz.get("course") not in course_tuple:     continue
+        if week_tuple   and quiz.get("week") not in week_tuple:         continue
+        if cat_tuple    and quiz.get("quiz_category") not in cat_tuple: continue
+
+        parts = [quiz.get(k) for k in ("level", "semester", "course", "week", "quiz_category") if quiz.get(k)]
+        label = title
+        if parts:
+            label += " • " + " → ".join(parts)
+
+        filtered[label] = title
+
+    return filtered
+
+
+# ───────────────────────────────────────────────
+# Helper function for scoring
 # ───────────────────────────────────────────────
 def _calculate_and_store_score(shuffled_questions, original_questions):
     correct_count = 0
@@ -157,7 +192,7 @@ def is_admin():
 
 
 # ───────────────────────────────────────────────
-# Hierarchy helpers
+# Hierarchy helpers (unchanged)
 # ───────────────────────────────────────────────
 @st.cache_data(ttl=600)
 def get_all_departments():
@@ -286,6 +321,7 @@ def submit_quiz_section():
                 if quiz_category:
                     data["quiz_category"] = quiz_category
                 save_quiz(title, data)
+                # No st.rerun() here — success message stays visible
             except json.JSONDecodeError:
                 st.error("Invalid JSON format.")
             except Exception as e:
@@ -300,6 +336,7 @@ def submit_quiz_section():
                 if not data.get("department"):
                     data["department"] = "Uncategorized"
                 save_quiz(title, data)
+                # No st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -380,13 +417,13 @@ def organize_quizzes_section():
                 if changed:
                     save_quiz(title, updated)
                     st.success("Saved!")
-                    st.rerun()
+                    # No st.rerun() — load_quizzes() already called
                 else:
                     st.info("No changes detected.")
 
 
 # ───────────────────────────────────────────────
-# Take quiz section (with auto-submit when time runs out)
+# Take quiz section
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -396,11 +433,9 @@ def take_quiz_section():
 
     original_questions = quiz.get("questions", [])
 
-    # ── Header (always visible) ────────────────────────────────
     st.header(f"Quiz: {title}")
     st.caption(f"Department: **{dept}**" + (f" • Topic: **{subcat}**" if subcat else ""))
 
-    # ── Timer values (computed once per run) ───────────────────
     timer_active = False
     remaining_sec = None
     mins, secs = 0, 0
@@ -416,7 +451,6 @@ def take_quiz_section():
                 st.rerun()
         timer_active = True
 
-    # ── TOP TIMER (prominent) ────────────────────────────────
     if timer_active:
         if remaining_sec is not None:
             if remaining_sec <= 60:
@@ -428,7 +462,6 @@ def take_quiz_section():
         else:
             st.info("⏳ No time limit — take your time")
 
-    # ── START PHASE ───────────────────────────────────────────
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
         st.markdown("---")
         st.info("Optional: select a time limit then click **Start Quiz** below.")
@@ -458,7 +491,6 @@ def take_quiz_section():
         st.markdown("---")
         return
 
-    # ── SHUFFLING (only once) ────────────────────────────────
     if st.session_state.shuffled_questions is None and original_questions:
         shuffled_idx = list(range(len(original_questions)))
         random.shuffle(shuffled_idx)
@@ -475,7 +507,6 @@ def take_quiz_section():
 
     shuffled_questions = st.session_state.shuffled_questions or original_questions
 
-    # ── QUESTIONS ────────────────────────────────────────────
     for i, q in enumerate(shuffled_questions):
         st.subheader(f"Q{i+1}. {q.get('question', '—')}")
 
@@ -531,16 +562,14 @@ def take_quiz_section():
 
         st.markdown("---")
 
-    # ── BOTTOM: SUBMIT AREA + AUTO-SUBMIT LOGIC ──────────────
     quiz_ended = st.session_state.show_answers or st.session_state.timer_expired
 
     if not quiz_ended:
         st.markdown("---")
-
         col_reminder, col_submit = st.columns([1, 2])
 
         with col_reminder:
-            if timer_active and remaining_sec is not None and remaining_sec < 999999999:
+            if timer_active and remaining_sec is not None:
                 if remaining_sec <= 300:
                     st.markdown(f"**⏳ {mins:02d}:{secs:02d} left**", unsafe_allow_html=True)
                 else:
@@ -555,19 +584,16 @@ def take_quiz_section():
                 st.rerun()
 
     else:
-        # Auto-submit when time runs out
         if st.session_state.timer_expired and st.session_state.score is None:
             with st.spinner("Time's up! Calculating your score..."):
-                time.sleep(0.8)  # brief delay for better user experience
+                time.sleep(0.8)
                 _calculate_and_store_score(shuffled_questions, original_questions)
             st.rerun()
 
-        # Show results
         if st.session_state.score:
             c, t = st.session_state.score
             pct = c / t * 100 if t > 0 else 0
 
-            # Show time-up message only once
             if st.session_state.timer_expired and not st.session_state.get('_time_up_message_shown', False):
                 st.error("⏰ **Time's up!** Quiz was automatically submitted.")
                 st.session_state['_time_up_message_shown'] = True
@@ -600,9 +626,12 @@ def take_quiz_section():
                         st.session_state[k] = None
             st.rerun()
 
-    # ── Auto-refresh for timer ───────────────────────────────
+    # Softer timer refresh
     if timer_active and not quiz_ended:
-        time.sleep(1)
+        if remaining_sec is None or remaining_sec > 60:
+            time.sleep(4)
+        else:
+            time.sleep(1)
         st.rerun()
 
 
@@ -706,78 +735,51 @@ with st.sidebar:
 
     st.header("Available Quizzes")
 
+    filtered = get_filtered_quiz_list(
+        tuple(sorted(st.session_state.selected_departments)),
+        tuple(sorted(st.session_state.selected_levels)),
+        tuple(sorted(st.session_state.selected_semesters)),
+        tuple(sorted(st.session_state.selected_courses)),
+        tuple(sorted(st.session_state.selected_weeks)),
+        tuple(sorted(st.session_state.selected_categories)),
+    )
+
     if not selected_depts:
         st.info("Select at least one department to begin.")
-    elif not selected_levels:
-        st.info("Select level(s).")
-    elif not selected_semesters:
-        st.info("Select semester(s).")
-    elif not selected_courses:
-        st.info("Select course(s) to see available quizzes.")
+    elif not filtered:
+        st.info("No quizzes match the selected filters.")
     else:
-        filtered = {}
-        for title, quiz in st.session_state.quizzes.items():
-            ok = True
-            dept = quiz.get("department") or quiz.get("category", "Uncategorized")
-            if selected_depts and dept not in selected_depts:
-                ok = False
-            if selected_levels and quiz.get("level") not in selected_levels:
-                ok = False
-            if selected_semesters and quiz.get("semester") not in selected_semesters:
-                ok = False
-            if selected_courses and quiz.get("course") not in selected_courses:
-                ok = False
-            if selected_weeks and quiz.get("week") not in selected_weeks:
-                ok = False
-            if selected_categories and quiz.get("quiz_category") not in selected_categories:
-                ok = False
-
-            if ok:
-                parts = []
-                if quiz.get("level"): parts.append(quiz["level"])
-                if quiz.get("semester"): parts.append(quiz["semester"])
-                if quiz.get("course"): parts.append(quiz["course"])
-                if quiz.get("week"): parts.append(quiz["week"])
-                if quiz.get("quiz_category"): parts.append(quiz["quiz_category"])
-                label = title
-                if parts:
-                    label += " • " + " → ".join(parts)
-                filtered[label] = title
-
-        if not filtered:
-            st.info("No quizzes match the selected filters.")
-        else:
-            st.caption(f"Found {len(filtered)} quiz{'zes' if len(filtered)!=1 else ''}")
-            for label, real_title in sorted(filtered.items()):
-                cols = st.columns([4, 1, 1])
-                with cols[0]:
-                    active = real_title == st.session_state.selected_quiz
-                    if st.button(label, key=f"q_{real_title}",
-                                 type="primary" if active else "secondary",
-                                 use_container_width=True):
-                        if not active:
-                            st.session_state.selected_quiz = real_title
-                            for k in ['user_answers','show_answers','score','quiz_start_time',
-                                      'time_limit_minutes','timer_expired','reveal_correct_answers',
-                                      'shuffled_questions','option_shuffles']:
-                                if k in st.session_state:
-                                    v = st.session_state[k]
-                                    if isinstance(v, dict):
-                                        v.clear()
-                                    else:
-                                        st.session_state[k] = None
-                            st.rerun()
-                with cols[1]:
-                    if is_admin():
-                        if st.button("✏️", key=f"e_{real_title}", help="Edit quiz"):
-                            st.session_state.edit_quiz_title = real_title
-                            st.session_state.edit_quiz_data = st.session_state.quizzes[real_title].copy()
-                            st.rerun()
-                with cols[2]:
-                    if is_admin():
-                        if st.button("🗑", key=f"d_{real_title}", help="Delete quiz"):
-                            delete_quiz(real_title)
-                            st.rerun()
+        st.caption(f"Found {len(filtered)} quiz{'zes' if len(filtered)!=1 else ''}")
+        for label, real_title in sorted(filtered.items()):
+            cols = st.columns([4, 1, 1])
+            with cols[0]:
+                active = real_title == st.session_state.selected_quiz
+                if st.button(label, key=f"q_{real_title}",
+                             type="primary" if active else "secondary",
+                             use_container_width=True):
+                    if not active:
+                        st.session_state.selected_quiz = real_title
+                        for k in ['user_answers','show_answers','score','quiz_start_time',
+                                  'time_limit_minutes','timer_expired','reveal_correct_answers',
+                                  'shuffled_questions','option_shuffles']:
+                            if k in st.session_state:
+                                v = st.session_state[k]
+                                if isinstance(v, dict):
+                                    v.clear()
+                                else:
+                                    st.session_state[k] = None
+                        st.rerun()
+            with cols[1]:
+                if is_admin():
+                    if st.button("✏️", key=f"e_{real_title}", help="Edit quiz"):
+                        st.session_state.edit_quiz_title = real_title
+                        st.session_state.edit_quiz_data = st.session_state.quizzes[real_title].copy()
+                        st.rerun()
+            with cols[2]:
+                if is_admin():
+                    if st.button("🗑", key=f"d_{real_title}", help="Delete quiz"):
+                        delete_quiz(real_title)
+                        st.rerun()
 
     st.divider()
     if is_admin():
@@ -799,145 +801,144 @@ else:
     st.info("Choose a quiz from the list in the sidebar.")
 
 
-# ── Edit form ────────────────────────────────────────────────
+# ── Edit form (now in expander) ────────────────────────────────────────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     title = st.session_state.edit_quiz_title
     data = st.session_state.edit_quiz_data
 
-    st.markdown("---")
-    st.subheader(f"Editing Quiz: {title}")
-    st.caption("Make your changes below then click Save Changes")
+    with st.expander(f"✏️ Editing Quiz: {title}", expanded=True):
+        st.caption("Make your changes below then click Save Changes")
 
-    with st.form(key="edit_quiz_form", clear_on_submit=False):
-        edited_title = st.text_input(
-            "Quiz Title",
-            value=data.get("quiz_title", title),
-            key="edit_title"
-        ).strip()
+        with st.form(key="edit_quiz_form", clear_on_submit=False):
+            edited_title = st.text_input(
+                "Quiz Title",
+                value=data.get("quiz_title", title),
+                key="edit_title"
+            ).strip()
 
-        all_depts = sorted(set(get_all_departments()) | {"Uncategorized"})
-        current_dept = data.get("department") or data.get("category", "Uncategorized")
-        dept_index = all_depts.index(current_dept) if current_dept in all_depts else 0
+            all_depts = sorted(set(get_all_departments()) | {"Uncategorized"})
+            current_dept = data.get("department") or data.get("category", "Uncategorized")
+            dept_index = all_depts.index(current_dept) if current_dept in all_depts else 0
 
-        department = st.selectbox(
-            "Department / Category",
-            options=all_depts + ["New department..."],
-            index=dept_index,
-            key="edit_department"
-        )
-
-        new_dept = ""
-        if department == "New department...":
-            new_dept = st.text_input("New department name", key="edit_new_dept").strip()
-
-        final_dept = (new_dept or department).strip()
-
-        edited_subcategory = st.text_input(
-            "Sub-category / Topic (optional)",
-            value=data.get("subcategory", ""),
-            key="edit_subcategory"
-        ).strip()
-
-        level_options = [""] + get_all_levels()
-        current_level = data.get("level", "")
-        if current_level and current_level not in level_options:
-            level_options.append(current_level)
-        edited_level = st.selectbox(
-            "Level",
-            options=level_options + ["Other..."],
-            index=level_options.index(current_level) if current_level in level_options else 0,
-            key="edit_level_select"
-        )
-        if edited_level == "Other...":
-            edited_level = st.text_input("Custom level", key="edit_level_custom").strip()
-
-        sem_options = ["", "First Semester", "Second Semester"]
-        current_sem = data.get("semester", "")
-        edited_semester = st.selectbox(
-            "Semester",
-            options=sem_options + ["Other..."],
-            index=sem_options.index(current_sem) if current_sem in sem_options else 0,
-            key="edit_semester_select"
-        )
-        if edited_semester == "Other...":
-            edited_semester = st.text_input("Custom semester", key="edit_semester_custom").strip()
-
-        edited_course = st.text_input(
-            "Course (e.g. CSC 101)",
-            value=data.get("course", ""),
-            key="edit_course"
-        ).strip()
-
-        edited_week = st.text_input(
-            "Week (e.g. Week 3, Midterm)",
-            value=data.get("week", ""),
-            key="edit_week"
-        ).strip()
-
-        edited_category = st.text_input(
-            "Quiz Category (e.g. Quiz 1, Past Questions)",
-            value=data.get("quiz_category", ""),
-            key="edit_category"
-        ).strip()
-
-        st.markdown("---")
-        st.caption("Advanced: edit the full JSON directly (last resort)")
-        current_json = json.dumps(data, indent=2, ensure_ascii=False)
-        edited_json = st.text_area(
-            "Full Quiz JSON",
-            value=current_json,
-            height=320,
-            key="edit_json_full"
-        )
-
-        col_save, col_cancel = st.columns([3, 2])
-
-        with col_save:
-            save_clicked = st.form_submit_button(
-                "💾 Save Changes",
-                type="primary",
-                use_container_width=True
+            department = st.selectbox(
+                "Department / Category",
+                options=all_depts + ["New department..."],
+                index=dept_index,
+                key="edit_department"
             )
 
-        with col_cancel:
-            cancel_clicked = st.form_submit_button(
-                "Cancel / Close",
-                use_container_width=True
+            new_dept = ""
+            if department == "New department...":
+                new_dept = st.text_input("New department name", key="edit_new_dept").strip()
+
+            final_dept = (new_dept or department).strip()
+
+            edited_subcategory = st.text_input(
+                "Sub-category / Topic (optional)",
+                value=data.get("subcategory", ""),
+                key="edit_subcategory"
+            ).strip()
+
+            level_options = [""] + get_all_levels()
+            current_level = data.get("level", "")
+            if current_level and current_level not in level_options:
+                level_options.append(current_level)
+            edited_level = st.selectbox(
+                "Level",
+                options=level_options + ["Other..."],
+                index=level_options.index(current_level) if current_level in level_options else 0,
+                key="edit_level_select"
+            )
+            if edited_level == "Other...":
+                edited_level = st.text_input("Custom level", key="edit_level_custom").strip()
+
+            sem_options = ["", "First Semester", "Second Semester"]
+            current_sem = data.get("semester", "")
+            edited_semester = st.selectbox(
+                "Semester",
+                options=sem_options + ["Other..."],
+                index=sem_options.index(current_sem) if current_sem in sem_options else 0,
+                key="edit_semester_select"
+            )
+            if edited_semester == "Other...":
+                edited_semester = st.text_input("Custom semester", key="edit_semester_custom").strip()
+
+            edited_course = st.text_input(
+                "Course (e.g. CSC 101)",
+                value=data.get("course", ""),
+                key="edit_course"
+            ).strip()
+
+            edited_week = st.text_input(
+                "Week (e.g. Week 3, Midterm)",
+                value=data.get("week", ""),
+                key="edit_week"
+            ).strip()
+
+            edited_category = st.text_input(
+                "Quiz Category (e.g. Quiz 1, Past Questions)",
+                value=data.get("quiz_category", ""),
+                key="edit_category"
+            ).strip()
+
+            st.markdown("---")
+            st.caption("Advanced: edit the full JSON directly (last resort)")
+            current_json = json.dumps(data, indent=2, ensure_ascii=False)
+            edited_json = st.text_area(
+                "Full Quiz JSON",
+                value=current_json,
+                height=320,
+                key="edit_json_full"
             )
 
-        if save_clicked:
-            try:
-                updated_data = data.copy()
+            col_save, col_cancel = st.columns([3, 2])
 
-                updated_data["quiz_title"]   = edited_title or title
-                updated_data["department"]   = final_dept if final_dept and final_dept != "Uncategorized" else None
-                updated_data["subcategory"]  = edited_subcategory or None
-                updated_data["level"]        = edited_level or None
-                updated_data["semester"]     = edited_semester or None
-                updated_data["course"]       = edited_course or None
-                updated_data["week"]         = edited_week or None
-                updated_data["quiz_category"] = edited_category or None
+            with col_save:
+                save_clicked = st.form_submit_button(
+                    "💾 Save Changes",
+                    type="primary",
+                    use_container_width=True
+                )
 
-                if edited_json.strip() and edited_json.strip() != current_json.strip():
-                    try:
-                        json_parsed = json.loads(edited_json)
-                        updated_data.update(json_parsed)
-                        updated_data["quiz_title"] = edited_title or json_parsed.get("quiz_title", title)
-                        st.info("JSON override applied (structured fields had priority)")
-                    except json.JSONDecodeError:
-                        st.error("Invalid JSON in the advanced edit area — changes from fields above were still saved.")
+            with col_cancel:
+                cancel_clicked = st.form_submit_button(
+                    "Cancel / Close",
+                    use_container_width=True
+                )
 
-                save_quiz(updated_data["quiz_title"], updated_data)
+            if save_clicked:
+                try:
+                    updated_data = data.copy()
 
-                st.session_state.quizzes[updated_data["quiz_title"]] = updated_data.copy()
-                st.session_state.edit_quiz_data = updated_data.copy()
+                    updated_data["quiz_title"]   = edited_title or title
+                    updated_data["department"]   = final_dept if final_dept and final_dept != "Uncategorized" else None
+                    updated_data["subcategory"]  = edited_subcategory or None
+                    updated_data["level"]        = edited_level or None
+                    updated_data["semester"]     = edited_semester or None
+                    updated_data["course"]       = edited_course or None
+                    updated_data["week"]         = edited_week or None
+                    updated_data["quiz_category"] = edited_category or None
 
-                st.success(f"Quiz **{updated_data['quiz_title']}** saved successfully!")
+                    if edited_json.strip() and edited_json.strip() != current_json.strip():
+                        try:
+                            json_parsed = json.loads(edited_json)
+                            updated_data.update(json_parsed)
+                            updated_data["quiz_title"] = edited_title or json_parsed.get("quiz_title", title)
+                            st.info("JSON override applied (structured fields had priority)")
+                        except json.JSONDecodeError:
+                            st.error("Invalid JSON in advanced edit — structured fields still saved.")
 
-            except Exception as e:
-                st.error(f"Save failed: {str(e)}")
+                    save_quiz(updated_data["quiz_title"], updated_data)
 
-        if cancel_clicked:
-            st.session_state.edit_quiz_title = None
-            st.session_state.edit_quiz_data = None
-            st.rerun()
+                    st.session_state.quizzes[updated_data["quiz_title"]] = updated_data.copy()
+                    st.session_state.edit_quiz_data = updated_data.copy()
+
+                    st.success(f"Quiz **{updated_data['quiz_title']}** saved successfully!")
+
+                except Exception as e:
+                    st.error(f"Save failed: {str(e)}")
+
+            if cancel_clicked:
+                st.session_state.edit_quiz_title = None
+                st.session_state.edit_quiz_data = None
+                st.rerun()
